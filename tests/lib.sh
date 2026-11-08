@@ -45,9 +45,16 @@ tv_ready() {
 }
 
 # Raw UI hierarchy of the foreground screen.
+# uiautomator can fail when a previous dump is still registered; retry instead of reading nothing.
 ui_xml() {
-  tv shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
-  tv shell cat /sdcard/ui.xml
+  local i xml
+  for i in 1 2 3 4; do
+    tv shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
+    xml="$(tv shell cat /sdcard/ui.xml 2>/dev/null)"
+    [ -n "$xml" ] && { printf '%s' "$xml"; return 0; }
+    sleep 1
+  done
+  return 0
 }
 
 # Does the screen contain a node whose text equals / contains the given string?
@@ -90,8 +97,25 @@ launch_fresh() {
 }
 
 # Errors that indicate a crash or decoder failure since the last logcat -c.
+# Only FATAL blocks whose stack trace mentions the app count. uiautomator's own crashes are ignored.
 crash_or_decoder_errors() {
-  tv logcat -d | grep -E "FATAL EXCEPTION|NO_MEMORY|DECODER_INIT_FAILED|ANR in $PKG" | grep -v "^\s*$" || true
+  tv logcat -d | python3 -c '
+import sys
+lines = sys.stdin.read().splitlines()
+blocks, cur = [], None
+for line in lines:
+    if "FATAL EXCEPTION" in line:
+        cur = [line]; blocks.append(cur)
+    elif cur is not None and "AndroidRuntime" in line:
+        cur.append(line)
+    else:
+        cur = None
+for b in blocks:
+    if any("com.frigatetv" in l for l in b):
+        print(b[0])
+for line in lines:
+    if "NO_MEMORY" in line or "DECODER_INIT_FAILED" in line or "ANR in com.frigatetv" in line:
+        print(line)'
 }
 check_no_crash() {
   local errs
