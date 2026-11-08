@@ -1,0 +1,31 @@
+# Gradle / build
+.gradle/
+build/
+**/build/
+*.apk
+*.aab
+*.ap_
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+.DS_Store
+local.properties
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Local configuration (server addresses, secrets) — never commit
+local.properties
+*.local.properties
+secrets.properties
+.env
+*.jks
+*.keystore
+
+# Kotlin
+*.class
+
+# Local connection details and test output
+.env
+tests/out/
