@@ -2,36 +2,52 @@
 
 Goal (from `/goal`): the product works in its entirety on the TV, fully tested on the TV. Install nothing on the user's computer without asking first.
 
-Source of requirements: `instructions.md`.
+Requirements source: `instructions.md`.
 
-## Status
-- [x] Phase 1 — Frigate discovery (see `ARCHITECTURE.md` §1)
-- [ ] Toolchain (JDK 17+, Android SDK, Gradle) — **blocked on user approval to install**
-- [ ] Device connection (TV and phone via wireless ADB) — **blocked on user pairing**
-- [ ] Phase 2 — Android foundation, server profiles
-- [ ] Phase 3 — Live dashboard and RTSP playback (prototype with 5 streams on the TV first)
-- [ ] Phase 4 — TV remote navigation and fullscreen
-- [ ] Phase 5 — Audio (selected camera only)
-- [ ] Phase 6 — Event browser and playback
-- [ ] Phase 7 — Historical recordings timeline
-- [ ] Phase 8 — Phone responsive UI
-- [ ] Phase 9 — Performance and reliability
-- [ ] Phase 10 — Full QA on device, screenshots, docs (`TESTING.md`)
+## Setup (done)
+- [x] JDK 17, Android SDK (platform 35, build-tools 35.0.0, platform-tools), Gradle 9.8.2 installed on this Mac with approval.
+- [x] Google TV Streamer (Android 14) paired and connected over wireless ADB.
+- [x] Connection details live in the untracked `.env` (template: `.env.example`). See README "Testing on the TV".
+- [x] Device tests live in `tests/`, run with `tests/run_all.sh`.
 
-## Blockers (need user action)
-1. **Install toolchain on this Mac.** Current state: `/usr/bin/java` is a stub (no runtime), no Android SDK, no Gradle. Requested install: a JDK 17 (e.g. Temurin via Homebrew), Android SDK command-line tools, platform 35, build-tools, and platform-tools. Awaiting approval.
-2. **Connect the devices.** `adb devices -l` returned no devices. Wireless debugging must be paired on the TV (Google TV Streamer) and phone, then `adb connect`.
+## Status by phase
+- [x] Phase 1 — Frigate discovery (see `ARCHITECTURE.md` §1).
+- [x] Phase 2 — Foundation: Compose app, Frigate API client, DataStore persistence, server profiles (add/edit/delete/activate, test connection, unreachable profile refused and current profile kept).
+- [x] Phase 3 — Live dashboard and RTSP playback: 4–5 sub-streams on the TV, balanced grid, offline tile with snapshot and retry.
+- [x] Phase 4 — TV remote navigation and fullscreen (D-pad focus, OK opens fullscreen, LEFT/RIGHT switch, BACK returns, focus restored).
+- [~] Phase 5 — Audio: selected camera uses the main stream with sound; mute toggle. Not verified by measurement.
+- [~] Phase 6 — Events: list, filters, thumbnails, clip playback verified on the TV.
+- [~] Phase 7 — Recordings: day/camera chips, timeline with event markers, HLS playback verified. Load takes several seconds on a busy day.
+- [~] Phase 8 — Phone responsive UI: code written, not tested (no phone connected).
+- [~] Phase 9 — Performance and reliability: decoder-error fix (release before create) verified; memory sample ~160 MB PSS. Not yet measured under a long run.
+- [ ] Phase 10 — Full QA on device, screenshots, `TESTING.md`, final docs.
 
-## Acceptance (from instructions.md §18)
-Track each scenario in `TESTING.md` with actual results and device model. Simulated results must be labeled as such.
+## Verified on the TV (2026-11-08)
+- Layout: Automatic and 2-column both work; setting persists across restart.
+- Profiles: failed activation keeps current profile; failed test shows reason; delete works.
+- Settings: favorites and camera ordering controls work.
+- Restart: last camera, layout, and active profile persist.
+
+## Not yet verified on the TV
+- Network interruption and automatic recovery (Wi-Fi drop). Code path exists; not exercised.
+- Frigate unreachable for a whole session, beyond the single-profile test.
+- Phone UI (portrait/landscape, touch).
+- Extended multi-stream run and CPU/memory measurement over time.
+- Audio actually audible (only the SOUND ON state is verified).
+- Known open issue: some `tests/04_live_smoke.sh` focus checks still fail; being fixed.
+
+## Known limitations
+- Camera OSD clocks differ from wall time (Front ~10 min behind, Mailbox ~1 h off). Camera setting, not an app bug.
+- `reolink_camera` has no working stream on this server; shows offline by design.
+- Cleartext traffic is allowed app-wide for the LAN; should be tightened before release.
+- Recordings day load is slow for busy cameras.
 
 ## Risks
-- Five simultaneous RTSP streams on the Google TV Streamer. Mitigate with sub-streams in grid mode, one main stream for selected/fullscreen, and a concurrency cap.
-- Frigate auth is enabled on the server. Discovery read endpoints without credentials. The app must handle a 401 gracefully.
-- `reolink_camera` returned 404 on go2rtc during discovery. It must show as offline with backoff, not crash.
-- Frigate server address must not be committed.
+- Five simultaneous RTSP streams on the Google TV Streamer; mitigated by sub-streams in grid, one main stream for selection, and a stream cap (6).
+- Frigate auth is enabled on the server, yet most read endpoints answered without credentials. The app handles 401 as a connection failure; full auth flow not implemented.
+- Frigate server address and TV address must stay out of committed files.
 
 ## Progress log
-- 2026-11-08: JDK 17, Android SDK (platform 35, build-tools 35.0.0, platform-tools), and Gradle 9.8.2 installed on this Mac with approval.
-- 2026-11-08: Google TV Streamer (`Google_TV_Streamer`, Android 14) paired and connected over wireless ADB.
-- 2026-11-08: Milestone 1 (prototype) built: `./gradlew :app:assembleDebug` succeeds. Installed on the TV. Showed 4 of 5 sub-stream RTSP feeds live at once (front, back, driveway, mailbox). `reolink_camera_sub` returns RTSP DESCRIBE 404 and shows as a blank tile. Logcat: only that one stream errored.
+- 2026-11-08: Toolchain installed; TV paired; Milestone 1 (4 live streams on TV).
+- 2026-11-08: Grid, fullscreen, navigation, Events, Recordings, Settings, profile flows verified on TV; decoder-error fix; focus-restore fixes.
+- 2026-11-08: Device test suite added under `tests/`; `.env` introduced for connection details.
