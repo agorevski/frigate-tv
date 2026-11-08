@@ -68,7 +68,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         override fun onAvailable(network: Network) {
             viewModelScope.launch { onNetworkAvailable() }
         }
+
+        override fun onLost(network: Network) {
+            viewModelScope.launch { onNetworkLost() }
+        }
     }
+
+    /** True when stored profiles could not be read; nothing is written until the next launch so stored data is kept. */
+    private var profilesReadFailed = false
 
     init {
         connectivity?.registerDefaultNetworkCallback(networkCallback)
@@ -81,13 +88,31 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private suspend fun loadProfiles() {
-        val stored = runCatching { store.readProfiles() }.getOrDefault(emptyList())
+        val (stored, storedActive) = runCatching { store.readProfiles() to store.readActiveId() }.getOrElse {
+            profilesReadFailed = true
+            val fallback = defaultProfile()
+            _state.update {
+                it.copy(
+                    profiles = listOf(fallback),
+                    notice = "Could not read saved server profiles. Using the default server for this session; changes will not be saved.",
+                )
+            }
+            connectNow(fallback)
+            return
+        }
         val profiles = stored.ifEmpty { listOf(defaultProfile()) }
-        val storedActive = store.readActiveId()
         val active = profiles.firstOrNull { it.id == storedActive } ?: profiles.first()
-        store.writeProfiles(profiles, active.id)
+        persistProfiles(profiles, active.id).onFailure { showNotice("Could not save server profiles: ${it.message}") }
         _state.update { it.copy(profiles = profiles) }
         connectNow(active)
+    }
+
+    /** Writes the profile list; refuses while stored profiles are unreadable so existing data is never overwritten. */
+    private suspend fun persistProfiles(profiles: List<ServerProfile>, activeId: String): Result<Unit> {
+        if (profilesReadFailed) {
+            return Result.failure(IllegalStateException("saved profiles could not be read, so changes are not stored"))
+        }
+        return runCatching { store.writeProfiles(profiles, activeId) }
     }
 
     private fun defaultProfile() = ServerProfile(
@@ -107,7 +132,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun connectNow(profile: ServerProfile) {
         connectJob?.cancel()
-        detectJob?.cancel()
+        stopHealthLoop()
         _state.update {
             it.copy(
                 active = profile,
@@ -136,13 +161,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun onConnectionLost(profile: ServerProfile, e: Exception) {
         val reason = (e as? FrigateException)?.message ?: "Unexpected error (${e.javaClass.simpleName})"
-        detectJob?.cancel()
+        stopHealthLoop()
         _state.update { it.copy(connection = Connection.Failed(reason), cameras = emptyList(), detecting = emptySet()) }
         scheduleRetry(profile)
     }
 
+    /** Retries are deferred while backgrounded; setForeground(true) reconnects. */
     private fun scheduleRetry(profile: ServerProfile) {
         retryJob?.cancel()
+        if (!_state.value.foreground) return
         val delayMs = minOf(MAX_RETRY_DELAY_MS, BASE_RETRY_DELAY_MS shl minOf(retryAttempts, 4))
         retryAttempts++
         retryJob = viewModelScope.launch {
@@ -151,9 +178,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** Detection polling for the grid badges, plus a periodic server health check. */
-    private fun startHealthLoop(profile: ServerProfile) {
+    private fun stopHealthLoop() {
         detectJob?.cancel()
+        detectJob = null
+    }
+
+    /** Detection polling for the grid badges, plus a periodic server health check. Does nothing while backgrounded. */
+    private fun startHealthLoop(profile: ServerProfile) {
+        stopHealthLoop()
+        if (!_state.value.foreground) return
         detectJob = viewModelScope.launch {
             var polls = 0
             while (true) {
@@ -179,12 +212,41 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun onNetworkAvailable() {
         _state.update { it.copy(networkEpoch = it.networkEpoch + 1) }
-        if (_state.value.connection is Connection.Failed) reconnect()
+        if (_state.value.foreground && _state.value.connection is Connection.Failed) reconnect()
+    }
+
+    /**
+     * The default network went away. With no network left, mark the server offline and stop polling.
+     * If another network has taken over (e.g. Wi-Fi to cellular), reconnect over it instead.
+     */
+    private fun onNetworkLost() {
+        val s = _state.value
+        if (s.active == null) return
+        if (connectivity?.activeNetwork != null) {
+            if (s.foreground) reconnect()
+            return
+        }
+        connectJob?.cancel()
+        retryJob?.cancel()
+        stopHealthLoop()
+        _state.update {
+            it.copy(connection = Connection.Failed("Network unavailable"), cameras = emptyList(), detecting = emptySet())
+        }
     }
 
     fun setForeground(foreground: Boolean) {
         _state.update { it.copy(foreground = foreground) }
-        if (foreground && _state.value.connection is Connection.Failed) reconnect()
+        if (!foreground) {
+            retryJob?.cancel()
+            stopHealthLoop()
+            _state.update { it.copy(detecting = emptySet()) }
+            return
+        }
+        val s = _state.value
+        when {
+            s.connection is Connection.Failed -> reconnect()
+            s.connection is Connection.Connected -> s.active?.let { startHealthLoop(it) }
+        }
     }
 
     /**
@@ -219,7 +281,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             current.profiles + edited
         }
         val activeId = if (makeActive) edited.id else current.active?.id ?: edited.id
-        store.writeProfiles(updated, activeId)
+        persistProfiles(updated, activeId).onFailure {
+            val message = "Could not save ${edited.name}: ${it.message}"
+            showNotice(message)
+            return Result.failure(IllegalStateException(message))
+        }
         _state.update { it.copy(profiles = updated) }
         if (affectsActive) {
             retryJob?.cancel()
@@ -242,8 +308,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             val remaining = current.profiles.filterNot { it.id == id }
             val wasActive = current.active?.id == id
             val newActive = if (wasActive) remaining.first() else current.active ?: remaining.first()
-            store.writeProfiles(remaining, newActive.id)
-            store.deletePrefs(id)
+            persistProfiles(remaining, newActive.id).onFailure {
+                showNotice("Could not delete the profile: ${it.message}")
+                return@launch
+            }
+            runCatching { store.deletePrefs(id) }
             _state.update { it.copy(profiles = remaining) }
             if (wasActive) {
                 retryJob?.cancel()
@@ -283,6 +352,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         val newPrefs = transform(s.prefs)
         if (newPrefs == s.prefs) return
         _state.update { it.copy(prefs = newPrefs) }
-        viewModelScope.launch { store.writePrefs(profile.id, newPrefs) }
+        viewModelScope.launch {
+            runCatching { store.writePrefs(profile.id, newPrefs) }
+                .onFailure { showNotice("Could not save settings: ${it.message}") }
+        }
     }
 }

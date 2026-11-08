@@ -8,8 +8,8 @@
 UNREACHABLE_HOST="10.255.255.1"
 PROFILE_NAME="ZZ Unreachable Test"
 check "TV connected" tv_ready
-launch_fresh 25
-goto_tab settings; sleep 2
+launch_fresh
+goto_tab settings; wait_for "Settings tab opened" 10 ui_text "Server profiles"
 
 if focus_button "Add server profile"; then pass "focused Add server profile"; else fail "focused Add server profile"; fi
 key KEYCODE_DPAD_CENTER 2
@@ -39,8 +39,8 @@ check "Home is still the header profile" ui_text "Home"
 screenshot profile-activate-refused
 save_logcat profile
 check "no crash during profile flow" check_no_crash profile
-launch_fresh 15                                # discard the unsaved draft, then check the saved list
-goto_tab settings; sleep 2
+launch_fresh
+goto_tab settings; wait_for "Settings tab opened" 10 ui_text "Server profiles"
 profile_not_saved() { ! ui_contains "$PROFILE_NAME"; }
 check "unreachable profile was not saved (absent from list after restart)" profile_not_saved
 summary

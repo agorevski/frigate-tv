@@ -108,11 +108,16 @@ wait_for() {
   fail "$desc"; return 1
 }
 
+app_ui_ready() { ui_xml | grep -q "package=\"$PKG\""; }
+
+# Returns once the app has a foreground UI. Stream readiness is checked by each test.
 launch_fresh() {
   tv shell am force-stop $PKG
   tv logcat -c
   tv shell am start -n $ACTIVITY >/dev/null
-  sleep "${1:-20}"
+  local i
+  for i in $(seq 1 30); do app_ui_ready && return 0; sleep 1; done
+  fail "app UI appears after launch"
 }
 
 # Errors that indicate a crash or decoder failure since the last logcat -c.

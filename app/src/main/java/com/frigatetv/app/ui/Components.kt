@@ -1,7 +1,10 @@
 package com.frigatetv.app.ui
 
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Log
+import android.view.TextureView
+import android.widget.FrameLayout
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -43,9 +46,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.foundation.layout.BoxScope
+import androidx.media3.common.AudioAttributes
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.VideoSize
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.rtsp.RtspMediaSource
 import androidx.media3.ui.AspectRatioFrameLayout
@@ -175,28 +180,49 @@ fun StreamPlayer(
 ) {
     val context = LocalContext.current
     val currentOnState by rememberUpdatedState(onState)
-    var failures by remember(url, networkEpoch) { mutableIntStateOf(0) }
+    // Consecutive failed attempts, used for backoff. Reset as soon as playback is healthy.
+    val failures = remember(url, networkEpoch) { mutableIntStateOf(0) }
     val errorCount = remember(url, networkEpoch) { mutableIntStateOf(0) }
+    // Bumped after a backoff delay to rebuild the player. Kept separate from [failures] so
+    // that resetting the backoff on success does not tear down a healthy player.
+    var attempt by remember(url, networkEpoch) { mutableIntStateOf(0) }
     var player by remember { mutableStateOf<ExoPlayer?>(null) }
+    // Video outputs of the current player, kept so the old one is unbound before it is released.
+    val playerViewRef = remember { arrayOfNulls<PlayerView>(1) }
+    val textureRef = remember { arrayOfNulls<TextureView>(1) }
+    val frameRef = remember { arrayOfNulls<AspectRatioFrameLayout>(1) }
 
     // The player is created inside the effect (not during composition) so that the previous
     // player is fully released before the next decoder is allocated. Devices have a small
     // hardware decoder pool; overlapping instances cause NO_MEMORY / decoder-init failures.
-    DisposableEffect(url, networkEpoch, failures) {
+    DisposableEffect(url, networkEpoch, attempt) {
         val created = ExoPlayer.Builder(context).build().apply {
             addListener(object : Player.Listener {
                 override fun onPlaybackStateChanged(playbackState: Int) {
                     when (playbackState) {
                         Player.STATE_BUFFERING -> currentOnState(StreamState.Buffering)
-                        Player.STATE_READY -> currentOnState(
-                            if (this@apply.isPlaying) StreamState.Live else StreamState.Buffering
-                        )
+                        Player.STATE_READY -> {
+                            failures.intValue = 0
+                            currentOnState(
+                                if (this@apply.isPlaying) StreamState.Live else StreamState.Buffering
+                            )
+                        }
                         else -> Unit
                     }
                 }
 
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
-                    if (isPlaying) currentOnState(StreamState.Live)
+                    if (isPlaying) {
+                        failures.intValue = 0
+                        currentOnState(StreamState.Live)
+                    }
+                }
+
+                override fun onVideoSizeChanged(videoSize: VideoSize) {
+                    val frame = frameRef[0] ?: return
+                    if (videoSize.width > 0 && videoSize.height > 0) {
+                        frame.setAspectRatio(videoSize.width * videoSize.pixelWidthHeightRatio / videoSize.height)
+                    }
                 }
 
                 override fun onPlayerError(error: PlaybackException) {
@@ -205,6 +231,8 @@ fun StreamPlayer(
                     errorCount.intValue++
                 }
             })
+            // Only the audible player takes audio focus, so other apps duck or pause for it.
+            setAudioAttributes(AudioAttributes.DEFAULT, audible)
             val item = MediaItem.fromUri(url)
             if (rtsp) {
                 setMediaSource(RtspMediaSource.Factory().setForceUseRtpTcp(true).createMediaSource(item))
@@ -218,43 +246,103 @@ fun StreamPlayer(
         player = created
         onDispose {
             player = null
+            // Unbind the video output first so the decoder's output is not left targeting a released player.
+            playerViewRef[0]?.takeIf { it.player === created }?.player = null
+            textureRef[0]?.let { created.clearVideoTextureView(it) }
+            created.clearVideoSurface()
             created.release()
         }
     }
 
     LaunchedEffect(player, audible) {
-        player?.volume = if (audible) 1f else 0f
+        player?.apply {
+            volume = if (audible) 1f else 0f
+            setAudioAttributes(AudioAttributes.DEFAULT, audible)
+        }
     }
 
     LaunchedEffect(errorCount.intValue) {
         if (errorCount.intValue == 0 || !retry) return@LaunchedEffect
-        delay(backoffMs(failures))
-        failures++
+        delay(backoffMs(failures.intValue))
+        failures.intValue++
+        attempt++
     }
 
     LaunchedEffect(url, networkEpoch) {
         currentOnState(StreamState.Connecting)
     }
 
-    AndroidView(
-        modifier = modifier,
-        factory = { ctx ->
-            PlayerView(ctx).apply {
-                useController = controls
-                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                setKeepScreenOn(true)
-            }
-        },
-        update = { view ->
-            view.useController = controls
-            view.player = player
-        },
-    )
+    if (controls) {
+        AndroidView(
+            modifier = modifier,
+            factory = { ctx ->
+                PlayerView(ctx).apply {
+                    useController = true
+                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                    setKeepScreenOn(true)
+                    playerViewRef[0] = this
+                }
+            },
+            update = { view -> view.player = player },
+        )
+    } else {
+        // Live tiles render through a TextureView, not the default SurfaceView. Several SurfaceView
+        // video layers compete for the SoC's hardware overlay plane; the compositor then hangs on
+        // a stuck GPU fence (ANR) when a decoder is torn down or re-bound during a camera switch.
+        AndroidView(
+            modifier = modifier,
+            factory = { ctx ->
+                AspectRatioFrameLayout(ctx).apply {
+                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                    addView(
+                        TextureView(ctx).also { textureRef[0] = it },
+                        FrameLayout.LayoutParams(
+                            FrameLayout.LayoutParams.MATCH_PARENT,
+                            FrameLayout.LayoutParams.MATCH_PARENT,
+                        ),
+                    )
+                    frameRef[0] = this
+                }
+            },
+            update = { _ -> textureRef[0]?.let { tv -> player?.setVideoTextureView(tv) } },
+        )
+    }
+}
+
+/** Longest edge of decoded snapshots and thumbnails; larger sources are subsampled on decode. */
+private const val MAX_IMAGE_EDGE_PX = 640
+
+/**
+ * Decodes [bytes] at the smallest power-of-two sample size that keeps the longest edge within
+ * [MAX_IMAGE_EDGE_PX]. Returns null if the data is invalid or the decode runs out of memory.
+ */
+private fun decodeScaled(bytes: ByteArray): ImageBitmap? = try {
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+    val longest = maxOf(bounds.outWidth, bounds.outHeight)
+    if (longest <= 0) {
+        null
+    } else {
+        var sample = 1
+        while (longest / sample > MAX_IMAGE_EDGE_PX) sample *= 2
+        // Frigate serves JPEG (no alpha), so RGB_565 halves memory without visible loss.
+        val options = BitmapFactory.Options().apply {
+            inSampleSize = sample
+            inPreferredConfig = Bitmap.Config.RGB_565
+        }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)?.asImageBitmap()
+    }
+} catch (e: OutOfMemoryError) {
+    Log.w(TAG, "image decode out of memory; showing placeholder")
+    null
 }
 
 /**
  * Shows an image fetched from [url]. With [refreshMs] set it re-fetches periodically
  * (used for offline camera snapshots); with null it loads once (event thumbnails).
+ *
+ * Only the current bitmap is held, in the producer state, so it is freed when the composable
+ * leaves composition. Until an image is available a placeholder fills [modifier].
  */
 @Composable
 fun RemoteImage(
@@ -266,17 +354,18 @@ fun RemoteImage(
     val bitmap by produceState<ImageBitmap?>(initialValue = null, url, refreshMs) {
         while (true) {
             val decoded = runCatching { imageApi.getBytes(url) }.getOrNull()?.let { bytes ->
-                withContext(Dispatchers.Default) {
-                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
-                }
+                withContext(Dispatchers.Default) { decodeScaled(bytes) }
             }
             if (decoded != null) value = decoded
             if (refreshMs == null) break
             delay(refreshMs)
         }
     }
-    bitmap?.let {
-        Image(bitmap = it, contentDescription = null, modifier = modifier, contentScale = contentScale)
+    val loaded = bitmap
+    if (loaded != null) {
+        Image(bitmap = loaded, contentDescription = null, modifier = modifier, contentScale = contentScale)
+    } else {
+        Box(modifier.background(Panel))
     }
 }
 

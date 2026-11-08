@@ -14,11 +14,12 @@ for script in "$DIR"/[0-9][0-9]_*.sh; do
     [ "$match" -eq 1 ] || continue
   fi
   echo "### $name"
+  start=$SECONDS
   if bash "$script" 2>&1 | tee "$TEST_OUT/${name%.sh}.log"; then
-    echo "### $name OK"
+    echo "### $name OK ($((SECONDS - start))s)"
   else
-    echo "### $name FAILED"; status=1
+    echo "### $name FAILED ($((SECONDS - start))s)"; status=1
   fi
 done
-echo "Results: $TEST_OUT"
+echo "Total: $SECONDS s. Results: $TEST_OUT"
 exit $status

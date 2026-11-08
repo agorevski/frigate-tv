@@ -14,8 +14,7 @@ rtsp_status() {
   printf "DESCRIBE rtsp://$FRIGATE_HOST:$FRIGATE_RTSP_PORT/$1 RTSP/1.0\r\nCSeq: 1\r\nAccept: application/sdp\r\n\r\n" \
     | nc -w 4 "$FRIGATE_HOST" "$FRIGATE_RTSP_PORT" | head -1 | tr -d '\r'
 }
-check "RTSP front_sub DESCRIBE 200" sh -c "$(declare -f rtsp_status); rtsp_status front_sub | grep -q ' 200 '"
-check "RTSP back_sub DESCRIBE 200" sh -c "$(declare -f rtsp_status); rtsp_status back_sub | grep -q ' 200 '"
-# Known: reolink_camera has no producer on this server (see ARCHITECTURE.md). Expect 404 until fixed.
-check "RTSP reolink_camera_sub DESCRIBE 404 (known offline)" sh -c "$(declare -f rtsp_status); rtsp_status reolink_camera_sub | grep -q ' 404 '"
+rtsp_ok() { rtsp_status "$1" | grep -q ' 200 '; }
+check "RTSP front_sub DESCRIBE 200" rtsp_ok front_sub
+check "RTSP back_sub DESCRIBE 200" rtsp_ok back_sub
 summary

@@ -29,3 +29,4 @@ secrets.properties
 # Local connection details and test output
 .env
 tests/out/
+.kotlin/

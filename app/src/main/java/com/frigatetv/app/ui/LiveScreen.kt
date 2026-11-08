@@ -149,6 +149,9 @@ private fun CameraGrid(
     onOpen: (String) -> Unit,
 ) {
     val requesters = remember(cams.map { it.id }) { cams.associate { it.id to FocusRequester() } }
+    // The selected tile always decodes, so when it sits past the cap the other tiles yield one slot to it.
+    val selectedIndex = cams.indexOfFirst { it.id == selectedId }
+    val streamBudget = if (selectedIndex >= MAX_LIVE_STREAMS) MAX_LIVE_STREAMS - 1 else MAX_LIVE_STREAMS
     // Returning from fullscreen re-enters the grid; put focus back on the camera we left.
     LaunchedEffect(Unit) {
         runCatching { requesters[initialFocusId]?.requestFocus() }
@@ -185,7 +188,7 @@ private fun CameraGrid(
                             isDetecting = cam.id in state.detecting,
                             audible = isSelected && !state.prefs.muted,
                             networkEpoch = state.networkEpoch,
-                            withinBudget = index < MAX_LIVE_STREAMS || isSelected,
+                            withinBudget = index < streamBudget || isSelected,
                             modifier = tileModifier,
                             focusRequester = requesters.getValue(cam.id),
                             onFocus = { onFocusCamera(cam.id) },

@@ -23,6 +23,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -358,22 +359,65 @@ private fun CameraList(
         Text("No cameras discovered yet.", color = TextMuted, fontSize = 18.sp)
         return
     }
+    // Camera id and move direction of the row whose focus must follow it after a move.
+    var focusAfterMove by remember { mutableStateOf<Pair<String, Int>?>(null) }
     ordered.forEachIndexed { index, cam ->
-        Row(
-            Modifier.fillMaxWidth().padding(vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Text(
-                text = displayName(cam.id) + if (!cam.enabled) " (disabled)" else "",
-                color = if (cam.enabled) TextPrimary else TextMuted,
-                fontSize = 20.sp,
-                modifier = Modifier.width(320.dp),
-            )
-            FocusButton(if (cam.id in prefs.favorites) "★ Favorite" else "☆ Favorite", { vm.toggleFavorite(cam.id) },
-                selected = cam.id in prefs.favorites)
-            FocusButton("Move up", { vm.moveCamera(cam.id, -1) }, enabled = index > 0)
-            FocusButton("Move down", { vm.moveCamera(cam.id, 1) }, enabled = index < ordered.lastIndex)
+        key(cam.id) {
+            val favoriteRequester = remember { FocusRequester() }
+            val upRequester = remember { FocusRequester() }
+            val downRequester = remember { FocusRequester() }
+            val canUp = index > 0
+            val canDown = index < ordered.lastIndex
+            // Moving a row changes its index; focus its move button, or the other one if this edge is disabled.
+            LaunchedEffect(focusAfterMove, index, canUp, canDown) {
+                val pending = focusAfterMove
+                if (pending == null || pending.first != cam.id) return@LaunchedEffect
+                val target = when {
+                    pending.second < 0 && canUp -> upRequester
+                    pending.second > 0 && canDown -> downRequester
+                    canUp -> upRequester
+                    canDown -> downRequester
+                    else -> favoriteRequester
+                }
+                runCatching { target.requestFocus() }
+                focusAfterMove = null
+            }
+            Row(
+                Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text(
+                    text = displayName(cam.id) + if (!cam.enabled) " (disabled)" else "",
+                    color = if (cam.enabled) TextPrimary else TextMuted,
+                    fontSize = 20.sp,
+                    modifier = Modifier.width(320.dp),
+                )
+                FocusButton(
+                    if (cam.id in prefs.favorites) "★ Favorite" else "☆ Favorite",
+                    { vm.toggleFavorite(cam.id) },
+                    selected = cam.id in prefs.favorites,
+                    focusRequester = favoriteRequester,
+                )
+                FocusButton(
+                    "Move up",
+                    {
+                        focusAfterMove = cam.id to -1
+                        vm.moveCamera(cam.id, -1)
+                    },
+                    enabled = canUp,
+                    focusRequester = upRequester,
+                )
+                FocusButton(
+                    "Move down",
+                    {
+                        focusAfterMove = cam.id to 1
+                        vm.moveCamera(cam.id, 1)
+                    },
+                    enabled = canDown,
+                    focusRequester = downRequester,
+                )
+            }
         }
     }
 }

@@ -181,7 +181,11 @@ fun RecordingsScreen(state: AppState) {
                         modifier = Modifier.weight(1f),
                     )
                     FocusButton("Next event", {
-                        dayData.events.firstOrNull { it.startTime > cursor + 1 }?.let { cursor = it.startTime }
+                        // Frigate returns events newest first, so pick the earliest one after the cursor.
+                        dayData.events
+                            .filter { it.startTime > cursor + 1 }
+                            .minByOrNull { it.startTime }
+                            ?.let { cursor = it.startTime }
                     })
                     FocusButton("Play from here", { playStart = cursor }, selected = true)
                 }

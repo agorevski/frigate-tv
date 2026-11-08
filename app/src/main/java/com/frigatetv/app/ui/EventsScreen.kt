@@ -16,9 +16,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -26,6 +28,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -78,6 +81,13 @@ fun EventsScreen(state: AppState) {
     var range by rememberSaveable { mutableStateOf(TimeRange.DAY) }
     var cameraId by rememberSaveable { mutableStateOf<String?>(null) }
     var selected by remember { mutableStateOf<FrigateEvent?>(null) }
+    // Kept above the detail early return so the list keeps its scroll position and focus on the opened card.
+    val gridState = rememberLazyGridState()
+    var openedId by rememberSaveable { mutableStateOf<String?>(null) }
+    val returnFocus = remember { FocusRequester() }
+    LaunchedEffect(selected) {
+        if (selected == null) runCatching { returnFocus.requestFocus() }
+    }
 
     val result by produceState<Result<List<FrigateEvent>>?>(null, profile, range, cameraId) {
         val now = System.currentTimeMillis() / 1000.0
@@ -120,12 +130,21 @@ fun EventsScreen(state: AppState) {
             visible.isEmpty() -> CenteredMessage("No events for this filter.")
             else -> LazyVerticalGrid(
                 columns = GridCells.Adaptive(minSize = 280.dp),
+                state = gridState,
                 verticalArrangement = Arrangement.spacedBy(14.dp),
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
                 modifier = Modifier.fillMaxSize(),
             ) {
                 items(visible, key = { it.id }) { e ->
-                    EventCard(profile, e, onOpen = { selected = e })
+                    EventCard(
+                        profile,
+                        e,
+                        onOpen = {
+                            openedId = e.id
+                            selected = e
+                        },
+                        focusRequester = if (e.id == openedId) returnFocus else null,
+                    )
                 }
             }
         }
@@ -150,10 +169,16 @@ private fun FilterRow(title: String, content: @Composable RowScope.() -> Unit) {
 }
 
 @Composable
-private fun EventCard(profile: ServerProfile, event: FrigateEvent, onOpen: () -> Unit) {
+private fun EventCard(
+    profile: ServerProfile,
+    event: FrigateEvent,
+    onOpen: () -> Unit,
+    focusRequester: FocusRequester?,
+) {
     FocusSurface(
         onClick = onOpen,
         background = Panel,
+        focusRequester = focusRequester,
         modifier = Modifier.fillMaxWidth(),
     ) { _ ->
         Column(Modifier.fillMaxWidth()) {
