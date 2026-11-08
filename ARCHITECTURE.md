@@ -2,74 +2,66 @@
 
 Host placeholders: `<frigate-host>` is the LAN address of the Frigate server (configured by the user in-app; not committed).
 
-## 1. Discovery report (verified 2026-11-08)
+## 1. Discovery report
 
-Verified by live requests against the configured Frigate server. Capabilities marked **assumed** were not tested.
+### Verified on 2026-11-08 against the live server
 
-### Server
-| Item | Result |
-| --- | --- |
-| Frigate version | `0.16.2-4d58206` (`GET /api/version`), config reports `0.16-0` |
-| Web/API port | `9150` over HTTP, reachable from LAN |
-| Auth | Config reports `auth.enabled: true`. `GET /api/auth` returns **401**. Most read endpoints below answered **without credentials** during discovery. **Behavior under auth enforcement is unverified** — needs a check from the device. |
-| go2rtc RTSP | Port **8554** reachable on the LAN (raw RTSP `DESCRIBE` returns 200) |
-| go2rtc API port 1984 | Not reachable from the LAN (closed) |
+Repeatable check: `tests/03_frigate_api.sh` (run 2026-11-08): **8 passed, 0 failed**. Its `reolink_camera_sub` 404 check is a known-offline expectation, not a pass on a working stream.
 
-### Endpoints verified (HTTP status)
-| Endpoint | Status | Notes |
+Server: Frigate `0.16.2-4d58206` (`/api/version`); config reports `0.16-0`. Reachable over HTTP on the API port from the LAN. go2rtc RTSP (8554) reachable. go2rtc API (1984) **not reachable** (connection refused / 000).
+
+**Auth:** config has `auth.enabled: true`, and `GET /api/auth` returns **401**. However, every read endpoint below returned **200 without credentials**. So read access is open on this server. Behavior under credentialed or enforced access from the device is not tested.
+
+| Endpoint | Status observed | Notes |
 | --- | --- | --- |
-| `GET /api/version` | 200 | plain text version string |
-| `GET /api/config` | 200 | full config, includes camera definitions and go2rtc streams |
-| `GET /api/stats` | 200 | system and camera stats |
-| `GET /api/events?limit=N` | 200 | event list. Fields: `id`, `camera`, `label`, `sub_label`, `zones`, `start_time`, `end_time`, `has_clip`, `has_snapshot`, `top_score`, `data`, `thumbnail` |
-| `GET /api/events/summary` | 200 | per-camera / label summary |
-| `GET /api/go2rtc/streams` | 200 | per-stream producers and SDP |
-| `GET /api/<camera>/latest.jpg` | 200 | JPEG snapshot |
-| `GET /api/<camera>/recordings/summary?timezone=UTC` | 200 | hourly summary: `events`, `motion`, `objects`, `duration` |
-| `GET /api/profile` | 200 | |
-| `GET /api/cameras` | **404** | Not an endpoint in this version. Camera list comes from `/api/config`. |
-| `GET /api/recordings/summary` | not reachable (000) | not used |
-| `GET /api/auth` | **401** | auth-gated |
-| `GET /api/go2rtc/api/frame.mp4?src=<stream>` | 200 `video/mp4` | snapshot-style MP4 frame |
-| `GET /live/webrtc/api/ws?src=<stream>` | 400 without WS upgrade | go2rtc WebRTC signaling; browser/WebSocket only |
-| `GET /live/mse/api/ws?src=<stream>` | 400 without WS upgrade | go2rtc MSE signaling; WebSocket only |
-| `GET /live/<stream>/index.m3u8` | 200 `text/html` | **Not an HLS playlist** (the go2rtc web UI). Do not use. |
+| `GET /api/version` | 200 `text/plain` | `0.16.2-4d58206` |
+| `GET /api/config` | 200 `application/json` | ~31 KB; camera definitions and go2rtc streams |
+| `GET /api/stats` | 200 `application/json` | |
+| `GET /api/auth` | 401 | auth-gated |
+| `GET /api/events?limit=N` | 200 `application/json` | fields include `camera`, `label`, `start_time`, `end_time`, `has_clip`, `has_snapshot` |
+| `GET /api/<camera>/latest.jpg` | 200 `image/jpeg` | checked for all 5 cameras |
+| `GET /api/<camera>/recordings/summary?timezone=UTC` | 200 `application/json` | `reolink_camera` returned an empty body |
+| `GET /api/<camera>/recordings?after=&before=` | 200 `application/json` | segment list (`start_time`, `end_time`, `motion`, `objects`), checked on `driveway` |
+| `GET /api/events/<id>/thumbnail.jpg` | 200 `image/jpeg` | |
+| `GET /api/events/<id>/snapshot.jpg` | 200 `image/jpeg` | |
+| `GET /api/events/<id>/clip.mp4` | 200 `video/mp4` | ~6.2 MB for a 11 s event on `driveway` |
+| `GET /vod/<camera>/start/<s>/end/<e>/index.m3u8` | 200 `application/vnd.apple.mpegurl` | VOD playlist, `#EXT-X-PLAYLIST-TYPE:VOD`, `seg-N-v1.ts` segments, checked on `driveway` |
+| `GET /api/go2rtc/streams` | 200 `application/json` | per-stream producers and consumers |
+| `GET /api/go2rtc/api/frame.mp4?src=front` | 200 `video/mp4; codecs="avc1.4D0029"` | one-frame MP4 |
 
-### Cameras (from `/api/config`, names are Frigate camera IDs)
-| Camera ID | Record role | Detect role | Detect size (config) |
-| --- | --- | --- | --- |
-| `front` | `front` (main) | `front_sub` | 352×240 |
-| `back` | `back` | `back_sub` | 704×480 |
-| `mailbox` | `mailbox` | `mailbox_sub` | 704×480 |
-| `driveway` | `driveway` | `driveway_sub` | 704×480 |
-| `reolink_camera` | `reolink_camera` | `reolink_camera_sub` | 1280×720 |
+**Cameras** (from `/api/config`; IDs are Frigate camera names, all `enabled: true`, each with `record` and `detect` ffmpeg inputs):
+`front`, `back`, `mailbox`, `driveway`, `reolink_camera`.
 
-Which physical camera each ID maps to is **not** verified. The app must use these IDs from discovery, not guesses.
+**Stream codecs** (RTSP `DESCRIBE` on port 8554, re-checked this run):
 
-### Streams and codecs (RTSP `DESCRIBE` over port 8554, verified)
-| Stream | Result | Codecs in SDP |
+| Stream | RTSP result | Codecs in SDP |
 | --- | --- | --- |
-| `front` | 200 | H264, PCMA (audio) |
-| `back` | 200 | H264, MPEG4-GENERIC (AAC audio) |
-| `driveway` | 200 | H264, MPEG4-GENERIC |
-| `mailbox` | 200 | H264, MPEG4-GENERIC |
-| `reolink_camera` | **404** | no producer. Likely offline or misconfigured. Re-check at runtime. |
-| `front_sub`, `back_sub`, `driveway_sub`, `mailbox_sub` | 200 | H264 (no audio) |
-| `reolink_camera_sub` | **404** | no producer |
+| `front` | 200 | H264, PCMA/8000 audio |
+| `back` | 200 | H264, MPEG4-GENERIC/8000 audio |
+| `mailbox` | 200 | H264, MPEG4-GENERIC/8000 audio |
+| `driveway` | 200 | H264, MPEG4-GENERIC/8000 audio |
+| `reolink_camera` | **404** | none. go2rtc lists 2 producers for it but DESCRIBE still fails. Cause not investigated. |
+| `front_sub`, `back_sub`, `mailbox_sub`, `driveway_sub` | 200 | H264, no audio |
+| `reolink_camera_sub` | **404** | none (go2rtc lists 1 producer) |
 
-Audio: `front` (PCMA/G.711A), `back`, `driveway`, `mailbox` (AAC, MPEG4-GENERIC) have audio tracks. Frigate's own audio detection is disabled for all cameras. Playback audio is only from go2rtc.
+### Documented or assumed, not verified
 
-Resolutions for the main streams were not read from the SDP. Confirm on the device.
-
-### Recording and events
-- Recording is enabled (`record.enabled: true`), mode `all`, retained 7 days. Detection events retained 90 days.
-- Recording playback endpoints (for example `/vod/<camera>/start/<t>/end/<t>`) were **not tested** in this pass. Test them before building the timeline.
+- **`/api/cameras` returns 404** and **`/api/profile`** returned 200 in an earlier pass. Not re-tested this run.
+- **`/live/<stream>/index.m3u8`** is the go2rtc web UI, not HLS (earlier pass). Not re-tested.
+- **go2rtc WebRTC/MSE** signaling (`/live/webrtc/api/ws`, `/live/mse/api/ws`) answered 400 without a WebSocket upgrade in an earlier pass. Not re-tested. No WebSocket client was run.
+- **Recording and retention settings** (`record.enabled`, mode `all`, 7-day recording retention, 90-day event retention, Frigate audio detection disabled) come from an earlier config read. Not re-checked this run.
+- **Physical camera mapping** of each ID is not verified.
+- **Main-stream resolutions** are not read from the SDP. Confirm on the device.
+- **Audio decode** (PCMA, AAC) on the TV and phone is not tested.
+- **Auth enforcement** for credentialed or protected access from the device is not tested.
+- **Device-side reachability and simultaneous decode** on the Google TV Streamer and phone are not tested.
+- **go2rtc port 1984** is unreachable from this machine. Not verified whether it is reachable from the device.
 
 ## 2. Playback decision
 
 **Verified options:**
 1. **RTSP via go2rtc on port 8554** (verified). Use Media3 ExoPlayer's RTSP module (`media3-exoplayer-rtsp`). Only option that gives direct, low-latency live H264 with audio over the LAN, and the only one confirmed to work from the app's network stack.
-2. HLS: not available. The `/live/.../index.m3u8` path is the web UI.
+2. HLS VOD for recordings: verified via `/vod/<camera>/start/<s>/end/<e>/index.m3u8` (200). Not usable for live. The `/live/.../index.m3u8` path is the go2rtc web UI.
 3. go2rtc MSE/WebRTC: requires a WebSocket signaling flow against go2rtc's internal API. Not chosen. Adds a protocol the app would have to implement.
 
 **Chosen approach (provisional, to be validated on device):** ExoPlayer with RTSP for live tiles and fullscreen. Sub-streams in grid mode, main streams for fullscreen and selected camera. Hardware decoding via MediaCodec (default in Media3).
