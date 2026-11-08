@@ -97,26 +97,45 @@ screenshot() { tv exec-out screencap -p > "$OUT/$1.png"; }
 pid_alive() { [ -n "$(tv shell pidof $PKG 2>/dev/null | tr -d '\r')" ]; }
 
 # Fresh process, focus on the default camera, screen on.
+# until_true timeout_seconds command args...  -> silent poll (1 s steps); returns 0 once the command succeeds
+until_true() {
+  local limit="$1"; shift
+  local i
+  for i in $(seq 1 "$limit"); do
+    "$@" >/dev/null 2>&1 && return 0
+    sleep 1
+  done
+  return 1
+}
+
 # wait_for "description" timeout_seconds command args...  -> polls until the command succeeds
 wait_for() {
   local desc="$1" limit="$2"; shift 2
-  local i
-  for i in $(seq 1 "$limit"); do
-    "$@" >/dev/null 2>&1 && { pass "$desc"; return 0; }
-    sleep 1
-  done
+  if until_true "$limit" "$@"; then pass "$desc"; return 0; fi
   fail "$desc"; return 1
 }
 
 app_ui_ready() { ui_xml | grep -q "package=\"$PKG\""; }
 
 # Returns once the app has a foreground UI. Stream readiness is checked by each test.
+# If Google TV's "Choose an account" overlay covers the launch, BACK is pressed once and the app relaunched.
 launch_fresh() {
   tv shell am force-stop $PKG
   tv logcat -c
   tv shell am start -n $ACTIVITY >/dev/null
-  local i
-  for i in $(seq 1 30); do app_ui_ready && return 0; sleep 1; done
+  local i xml dismissed=0
+  for i in $(seq 1 15); do
+    xml="$(ui_xml)"
+    if [ "$dismissed" = 0 ] && printf '%s' "$xml" | grep -q "Choose an account"; then
+      key KEYCODE_BACK 1
+      tv shell am start -n $ACTIVITY >/dev/null
+      dismissed=1
+    elif printf '%s' "$xml" | grep -q "package=\"$PKG\""; then
+      return 0
+    fi
+    sleep 1
+  done
+  screenshot launch-failed
   fail "app UI appears after launch"
 }
 

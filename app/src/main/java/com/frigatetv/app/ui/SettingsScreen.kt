@@ -15,8 +15,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.ui.focus.FocusDirection
-import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.material3.Text
@@ -29,8 +27,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -282,12 +287,29 @@ private fun ProfileForm(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        val focusManager = LocalFocusManager.current
         val keyboard = LocalSoftwareKeyboardController.current
-        // IME "Next" moves focus to the next field, so a TV remote can fill the form without
-        // relying on D-pad DOWN (which a text field consumes).
+        val focusManager = LocalFocusManager.current
+        // IME "Next" moves focus explicitly through Name -> Host -> Port -> RTSP port -> Scheme.
+        // Directional search would skip fields (Host's Down lands on the RTSP port).
+        val hostFocus = remember { FocusRequester() }
+        val portFocus = remember { FocusRequester() }
+        val rtspFocus = remember { FocusRequester() }
+        val schemeFocus = remember { FocusRequester() }
         val nextOptions = KeyboardOptions(imeAction = ImeAction.Next)
-        val nextActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) })
+        // A focused text field consumes D-pad UP/DOWN for cursor movement, which traps focus.
+        // Handling them in a preview handler (runs before the field) lets focus move between rows.
+        // Compose also shows the IME whenever a field gains focus, and an open IME captures D-pad
+        // keys, so the IME is hidden on focus change; OK on a field still opens it.
+        val verticalNav = Modifier
+            .onFocusChanged { if (it.hasFocus) keyboard?.hide() }
+            .onPreviewKeyEvent { event ->
+                if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                when (event.nativeKeyEvent.keyCode) {
+                    android.view.KeyEvent.KEYCODE_DPAD_UP -> focusManager.moveFocus(FocusDirection.Up)
+                    android.view.KeyEvent.KEYCODE_DPAD_DOWN -> focusManager.moveFocus(FocusDirection.Down)
+                    else -> false
+                }
+            }
         Text(if (draft.id == null) "New server profile" else "Edit server profile", color = TextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
         OutlinedTextField(
             value = draft.name,
@@ -295,8 +317,12 @@ private fun ProfileForm(
             label = { Text("Name") },
             singleLine = true,
             keyboardOptions = nextOptions,
-            keyboardActions = nextActions,
-            modifier = Modifier.fillMaxWidth().focusRequester(nameFocus),
+            keyboardActions = KeyboardActions(onNext = { runCatching { hostFocus.requestFocus() } }),
+            modifier = Modifier
+                .fillMaxWidth()
+                .focusRequester(nameFocus)
+                .focusProperties { down = hostFocus }
+                .then(verticalNav),
         )
         OutlinedTextField(
             value = draft.host,
@@ -304,8 +330,12 @@ private fun ProfileForm(
             label = { Text("Host or IP address (e.g. 192.168.1.20)") },
             singleLine = true,
             keyboardOptions = nextOptions,
-            keyboardActions = nextActions,
-            modifier = Modifier.fillMaxWidth(),
+            keyboardActions = KeyboardActions(onNext = { runCatching { portFocus.requestFocus() } }),
+            modifier = Modifier
+                .fillMaxWidth()
+                .focusRequester(hostFocus)
+                .focusProperties { up = nameFocus; down = portFocus }
+                .then(verticalNav),
         )
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedTextField(
@@ -314,8 +344,12 @@ private fun ProfileForm(
                 label = { Text("Port") },
                 singleLine = true,
                 keyboardOptions = nextOptions,
-                keyboardActions = nextActions,
-                modifier = Modifier.width(160.dp),
+                keyboardActions = KeyboardActions(onNext = { runCatching { rtspFocus.requestFocus() } }),
+                modifier = Modifier
+                    .width(160.dp)
+                    .focusRequester(portFocus)
+                    .focusProperties { up = hostFocus; down = schemeFocus }
+                    .then(verticalNav),
             )
             OutlinedTextField(
                 value = draft.rtspPort,
@@ -323,14 +357,23 @@ private fun ProfileForm(
                 label = { Text("RTSP port") },
                 singleLine = true,
                 keyboardOptions = nextOptions,
-                keyboardActions = nextActions,
-                modifier = Modifier.width(160.dp),
+                keyboardActions = KeyboardActions(onNext = { runCatching { schemeFocus.requestFocus() } }),
+                modifier = Modifier
+                    .width(160.dp)
+                    .focusRequester(rtspFocus)
+                    .focusProperties { up = hostFocus; down = schemeFocus }
+                    .then(verticalNav),
             )
         }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("Scheme", color = TextMuted, fontSize = 16.sp)
-            Scheme.entries.forEach { s ->
-                FocusButton(s.wire.uppercase(), { onChange(draft.copy(scheme = s)) }, selected = draft.scheme == s)
+            Scheme.entries.forEachIndexed { i, s ->
+                FocusButton(
+                    s.wire.uppercase(),
+                    { onChange(draft.copy(scheme = s)) },
+                    selected = draft.scheme == s,
+                    focusRequester = if (i == 0) schemeFocus else null,
+                )
             }
         }
         error?.let { Text(it, color = Danger, fontSize = 16.sp) }

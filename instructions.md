@@ -14,9 +14,9 @@ This is a real application implementation task, not a prototype or mockup. Build
 
 Default server:
 
-- Host: `192.168.50.113`
+- Host: `<your-frigate-host>` (set in local `.env`, see README)
 - Port: `9150`
-- URL: `http://192.168.50.113:9150/`
+- URL: `http://<your-frigate-host>:9150/`
 - Authentication: None.
 
 Do not hardcode this server address throughout the application. It must be configurable through persistent local settings.
@@ -251,7 +251,7 @@ Each profile contains:
 
 Default profile:
 - Name: Home.
-- Address: 192.168.50.113.
+- Address: `<your-frigate-host>`.
 - Port: 9150.
 - Scheme: HTTP.
 
