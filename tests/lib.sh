@@ -11,8 +11,27 @@ if [ ! -f "$REPO_DIR/.env" ]; then
 fi
 set -a; . "$REPO_DIR/.env"; set +a
 
-export JAVA_HOME="${JAVA_HOME:-/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home}"
-export PATH="$JAVA_HOME/bin:$PATH"
+# JDK 17: keep an existing JAVA_HOME; otherwise the first JDK 17 found (the default java may be newer).
+if [ -z "${JAVA_HOME:-}" ]; then
+  for h in "$(java -XshowSettings:properties -version 2>&1 | sed -n 's/^ *java\.home = //p')" \
+           /usr/lib/jvm/java-17-openjdk-amd64 \
+           /opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home; do
+    if [ -x "$h/bin/java" ] && "$h/bin/java" -version 2>&1 | grep -q 'version "17[.]'; then
+      export JAVA_HOME="$h"; break
+    fi
+  done
+fi
+[ -n "${JAVA_HOME:-}" ] && export PATH="$JAVA_HOME/bin:$PATH"
+
+# Android SDK: keep an existing ANDROID_HOME; otherwise the first SDK found. Put adb on PATH if missing.
+if [ -z "${ANDROID_HOME:-}" ]; then
+  for d in "$HOME/Android/Sdk" /opt/homebrew/share/android-commandlinetools; do
+    [ -d "$d" ] && { export ANDROID_HOME="$d"; break; }
+  done
+fi
+if ! command -v adb >/dev/null 2>&1 && [ -x "${ANDROID_HOME:-/nonexistent}/platform-tools/adb" ]; then
+  export PATH="$ANDROID_HOME/platform-tools:$PATH"
+fi
 
 PKG=com.frigatetv.app
 ACTIVITY=$PKG/.MainActivity

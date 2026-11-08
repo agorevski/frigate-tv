@@ -26,9 +26,10 @@ Known server-side issues:
 
 ## Requirements
 
-- macOS (the scripts use Homebrew paths; adjust `JAVA_HOME` in `tests/lib.sh` for other hosts)
-- JDK 17
-- Android SDK command-line tools with platform 35, build-tools 35.0.0, and platform-tools
+- macOS or Linux (tested on Ubuntu 24.04)
+- JDK 17. `tests/lib.sh` uses `JAVA_HOME` if set, else finds a JDK 17 (`java` on PATH, `/usr/lib/jvm/java-17-openjdk-amd64`, or Homebrew `openjdk@17`).
+- Android SDK command-line tools with platform 35, build-tools 35.0.0, and platform-tools. Set `ANDROID_HOME` to the SDK root (for example `~/Android/Sdk`). If unset, the scripts try `~/Android/Sdk` and then the Homebrew location.
+- `adb` on `PATH`, or at `$ANDROID_HOME/platform-tools/adb`. The test scripts add that directory to `PATH` when `adb` is missing.
 - Gradle wrapper (included); system Gradle is only needed to regenerate the wrapper
 - A Frigate server (tested with 0.16.2) reachable on the LAN
 - For device testing: an Android TV / Google TV device with Wireless debugging enabled
