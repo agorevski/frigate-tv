@@ -11,7 +11,10 @@ enum class Scheme(val wire: String) {
     }
 }
 
-/** A saved Frigate server. Stored locally only (DataStore). */
+/**
+ * A saved Frigate server. Persisted in DataStore; the [password] is stored separately, encrypted
+ * with a Keystore key (see SettingsStore), and is only held in memory here.
+ */
 data class ServerProfile(
     val id: String = UUID.randomUUID().toString(),
     val name: String,
@@ -20,10 +23,23 @@ data class ServerProfile(
     val scheme: Scheme = Scheme.HTTP,
     /** go2rtc RTSP port on the same host (verified 8554 on the reference install). */
     val rtspPort: Int = 8554,
+    /** True when the server requires a Frigate login (authenticated port, Frigate 0.14+). */
+    val authEnabled: Boolean = false,
+    val username: String? = null,
+    val password: String? = null,
+    /** HTTPS only: accept this server's self-signed certificate, pinned to [pinnedCertSha256]. */
+    val trustSelfSigned: Boolean = false,
+    /** SHA-256 of the server's leaf certificate, colon-separated uppercase hex. Set on first trust. */
+    val pinnedCertSha256: String? = null,
 ) {
     val baseUrl: String get() = "${scheme.wire}://$host:$port"
 
     fun rtspUrl(stream: String): String = "rtsp://$host:$rtspPort/$stream"
+
+    /** Keeps the password out of logs and exception text. */
+    override fun toString(): String =
+        "ServerProfile(id=$id, name=$name, host=$host, port=$port, scheme=${scheme.wire}, " +
+            "authEnabled=$authEnabled, trustSelfSigned=$trustSelfSigned)"
 }
 
 /**
