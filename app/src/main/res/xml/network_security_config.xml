@@ -1,9 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Android cannot scope cleartext traffic by IP range, and profiles hold user-entered LAN
-  addresses (the default profile is plain HTTP), so cleartext is permitted at base level.
-  HTTPS trust is not weakened: only the system trust anchors are accepted, with no user-installed
-  CAs and no global TLS overrides.
+  Cleartext HTTP is permitted for every host. Profiles hold user-entered LAN addresses, and Android
+  cannot scope cleartext by IP range; the default profile is plain HTTP on the LAN. Login tokens
+  sent to an HTTP profile therefore cross the LAN unencrypted. Use HTTPS for remote access.
+
+  HTTPS trust is not weakened globally: only the system trust anchors are used, and no user-installed
+  CAs are trusted. A self-signed certificate is accepted only per profile, by SHA-256 pin, through
+  the profile's own client (auth/ProfileClients.kt).
 -->
 <network-security-config>
     <base-config cleartextTrafficPermitted="true">

@@ -5,6 +5,7 @@ import android.net.ConnectivityManager
 import android.net.Network
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.frigatetv.app.auth.ProfileClients
 import com.frigatetv.app.data.CameraInfo
 import com.frigatetv.app.data.FrigateApi
 import com.frigatetv.app.data.FrigateException
@@ -14,14 +15,16 @@ import com.frigatetv.app.data.ServerProfile
 import com.frigatetv.app.data.SettingsStore
 import com.frigatetv.app.data.orderedCameras
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
-import java.util.Collections
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.util.Collections
 
 private const val DETECT_POLL_MS = 4_000L
 /** Server health check runs every this many detection polls (about every 32 s). */
@@ -35,6 +38,9 @@ sealed interface Connection {
     data class Connected(val version: String) : Connection
     data class Failed(val reason: String) : Connection
 }
+
+/** Outcome of [AppViewModel.testProfile]: a summary line and, for self-signed profiles, the certificate fingerprint. */
+data class ConnectionTest(val summary: String, val certSha256: String?)
 
 data class AppState(
     val profiles: List<ServerProfile> = emptyList(),
@@ -250,39 +256,47 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Tests [profile] and returns a summary such as "0.16.2 · 5 cameras".
-     * Used by the settings form before saving.
+     * Tests [profile] with a throwaway client, so a failed test never changes the active session.
+     * Logs in first when the profile needs it, so a bad password is reported as such. The result
+     * includes the certificate fingerprint when the profile trusts a self-signed certificate.
      */
-    suspend fun testProfile(profile: ServerProfile): Result<String> = runCatching {
+    suspend fun testProfile(profile: ServerProfile): Result<ConnectionTest> = runCatching {
+        val clients = ProfileClients(profile)
+        val api = FrigateApi { clients.authed }
+        if (profile.authEnabled) withContext(Dispatchers.IO) { clients.login() }
         val version = api.version(profile)
         val cams = api.cameras(profile)
-        "Frigate $version · ${cams.size} cameras"
+        ConnectionTest("Frigate $version · ${cams.size} cameras", clients.observedFingerprint)
     }
 
     /**
      * Saves [edited]. If it will become (or already is) the active profile, it must pass a
-     * connection test first. On failure nothing is saved and the current profile stays active;
-     * the returned failure carries the reason for the form to show.
+     * connection test first. A self-signed certificate that is not pinned yet is also checked here, so
+     * the fingerprint seen now is what gets pinned. On failure nothing is saved and the current
+     * profile stays active; the returned failure carries the reason for the form to show.
      */
     suspend fun saveProfile(edited: ServerProfile, makeActive: Boolean): Result<Unit> {
         val current = _state.value
         val affectsActive = makeActive || edited.id == current.active?.id
-        if (affectsActive) {
-            testProfile(edited).onFailure {
+        val pinned = edited.trustSelfSigned && edited.scheme == Scheme.HTTPS
+        var profile = edited.copy(pinnedCertSha256 = if (pinned) edited.pinnedCertSha256 else null)
+        if (affectsActive || (pinned && profile.pinnedCertSha256 == null)) {
+            val test = testProfile(profile).getOrElse {
                 val message = "Could not connect to ${edited.name}: ${it.message}. Keeping the current profile."
                 showNotice(message)
                 return Result.failure(IllegalStateException(message))
             }
+            if (pinned) profile = profile.copy(pinnedCertSha256 = test.certSha256)
         }
-        val existing = current.profiles.any { it.id == edited.id }
+        val existing = current.profiles.any { it.id == profile.id }
         val updated = if (existing) {
-            current.profiles.map { if (it.id == edited.id) edited else it }
+            current.profiles.map { if (it.id == profile.id) profile else it }
         } else {
-            current.profiles + edited
+            current.profiles + profile
         }
-        val activeId = if (makeActive) edited.id else current.active?.id ?: edited.id
+        val activeId = if (makeActive) profile.id else current.active?.id ?: profile.id
         persistProfiles(updated, activeId).onFailure {
-            val message = "Could not save ${edited.name}: ${it.message}"
+            val message = "Could not save ${profile.name}: ${it.message}"
             showNotice(message)
             return Result.failure(IllegalStateException(message))
         }
@@ -290,10 +304,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         if (affectsActive) {
             retryJob?.cancel()
             retryAttempts = 0
-            connectNow(edited)
-            showNotice("Connected to ${edited.name}.")
+            connectNow(profile)
+            showNotice("Connected to ${profile.name}.")
         } else {
-            showNotice("Saved ${edited.name}.")
+            showNotice("Saved ${profile.name}.")
         }
         return Result.success(Unit)
     }

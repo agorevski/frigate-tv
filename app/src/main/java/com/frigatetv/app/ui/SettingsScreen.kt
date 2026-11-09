@@ -5,6 +5,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,7 +27,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -57,10 +57,12 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.isTraversalGroup
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.frigatetv.app.AppViewModel
 import com.frigatetv.app.AppState
+import com.frigatetv.app.AppViewModel
 import com.frigatetv.app.Connection
 import com.frigatetv.app.data.CameraInfo
 import com.frigatetv.app.data.Scheme
@@ -87,6 +89,13 @@ private class ProfileDraft(
     var port by mutableStateOf(port)
     var rtspPort by mutableStateOf(rtspPort)
     var scheme by mutableStateOf(scheme)
+    var authEnabled by mutableStateOf(false)
+    var username by mutableStateOf("")
+    var password by mutableStateOf("")
+    var trustSelfSigned by mutableStateOf(false)
+
+    /** Cleared when trust is switched on again, so the next connection re-pins the certificate. */
+    var pinnedCertSha256: String? by mutableStateOf(null)
 
     companion object {
         fun from(p: ServerProfile) = ProfileDraft(
@@ -96,7 +105,13 @@ private class ProfileDraft(
             port = p.port.toString(),
             rtspPort = p.rtspPort.toString(),
             scheme = p.scheme,
-        )
+        ).apply {
+            authEnabled = p.authEnabled
+            username = p.username.orEmpty()
+            password = p.password.orEmpty()
+            trustSelfSigned = p.trustSelfSigned
+            pinnedCertSha256 = p.pinnedCertSha256
+        }
 
         fun blank() = ProfileDraft(
             id = null,
@@ -126,6 +141,17 @@ private val RowMinHeight = 64.dp
 /** Width of the label column in option rows, so their pills line up across cards. */
 private val OptionLabelWidth = 140.dp
 
+private const val PIN_PENDING_HINT =
+    "The certificate is pinned when you test or save this profile. Compare its SHA-256 with the server's."
+
+/** The first problem with the login fields, or null when login is off or the fields are filled in. */
+private fun ProfileDraft.credentialError(): String? = when {
+    !authEnabled -> null
+    username.trim().isEmpty() -> "Enter the Frigate username."
+    password.isEmpty() -> "Enter the Frigate password."
+    else -> null
+}
+
 /** Returns the validated profile, or an error message describing the first problem. */
 private fun ProfileDraft.validate(): Pair<ServerProfile?, String?> {
     val trimmedName = name.trim()
@@ -137,6 +163,7 @@ private fun ProfileDraft.validate(): Pair<ServerProfile?, String?> {
         !HOST_PATTERN.matches(trimmedHost) -> null to "Enter a host name or IPv4 address (no scheme or port)."
         port == null || port !in 1..65535 -> null to "Port must be between 1 and 65535."
         rtsp == null || rtsp !in 1..65535 -> null to "RTSP port must be between 1 and 65535."
+        credentialError() != null -> null to credentialError()
         else -> ServerProfile(
             id = id ?: java.util.UUID.randomUUID().toString(),
             name = trimmedName,
@@ -144,6 +171,11 @@ private fun ProfileDraft.validate(): Pair<ServerProfile?, String?> {
             port = port,
             scheme = scheme,
             rtspPort = rtsp,
+            authEnabled = authEnabled,
+            username = username.trim().takeIf { authEnabled },
+            password = password.takeIf { authEnabled },
+            trustSelfSigned = trustSelfSigned && scheme == Scheme.HTTPS,
+            pinnedCertSha256 = pinnedCertSha256,
         ) to null
     }
 }
@@ -354,7 +386,10 @@ private fun ProfilesSection(
                             val result = vm.testProfile(profile)
                             testing = false
                             testResult = result.fold(
-                                onSuccess = { "Connected: $it" },
+                                onSuccess = { test ->
+                                    "Connected: ${test.summary}" +
+                                        (test.certSha256?.let { "\nCertificate SHA-256: $it" }.orEmpty())
+                                },
                                 onFailure = { "Failed: ${it.message}" },
                             )
                         }
@@ -479,7 +514,8 @@ private fun ProfileInfo(
                 }
             } else {
                 Text(
-                    "${profile.scheme.wire}://${profile.host}:${profile.port}",
+                    "${profile.scheme.wire}://${profile.host}:${profile.port}" +
+                        if (profile.authEnabled) " · login" else "",
                     color = TextSecondary,
                     style = MaterialTheme.typography.bodyMedium.merge(NumericStyle),
                     maxLines = 1,
@@ -514,6 +550,8 @@ private fun ProfileForm(
         val portFocus = remember { FocusRequester() }
         val rtspFocus = remember { FocusRequester() }
         val schemeFocus = remember { FocusRequester() }
+        val usernameFocus = remember { FocusRequester() }
+        val passwordFocus = remember { FocusRequester() }
         val nextOptions = KeyboardOptions(imeAction = ImeAction.Next)
         // A focused text field consumes D-pad UP/DOWN for cursor movement, which traps focus.
         // Handling them in a preview handler (runs before the field) lets focus move between rows.
@@ -608,6 +646,62 @@ private fun ProfileForm(
                     { draft.scheme = s },
                     selected = draft.scheme == s,
                     focusRequester = if (i == 0) schemeFocus else null,
+                )
+            }
+        }
+        OptionRow("Login") {
+            FocusButton("Off", { draft.authEnabled = false }, selected = !draft.authEnabled)
+            FocusButton("Required", { draft.authEnabled = true }, selected = draft.authEnabled)
+        }
+        if (draft.authEnabled) {
+            OutlinedTextField(
+                value = draft.username,
+                onValueChange = { draft.username = it },
+                label = { Text("Frigate username") },
+                singleLine = true,
+                colors = colors,
+                shape = shape,
+                keyboardOptions = nextOptions,
+                keyboardActions = KeyboardActions(onNext = { runCatching { passwordFocus.requestFocus() } }),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusRequester(usernameFocus)
+                    .focusProperties { down = passwordFocus }
+                    .then(verticalNav),
+            )
+            OutlinedTextField(
+                value = draft.password,
+                onValueChange = { draft.password = it },
+                label = { Text("Frigate password") },
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                colors = colors,
+                shape = shape,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusRequester(passwordFocus)
+                    .focusProperties { up = usernameFocus }
+                    .then(verticalNav),
+            )
+        }
+        if (draft.scheme == Scheme.HTTPS) {
+            OptionRow("Certificate") {
+                FocusButton("System CA", { draft.trustSelfSigned = false }, selected = !draft.trustSelfSigned)
+                FocusButton(
+                    "Trust self-signed",
+                    {
+                        if (!draft.trustSelfSigned) draft.pinnedCertSha256 = null
+                        draft.trustSelfSigned = true
+                    },
+                    selected = draft.trustSelfSigned,
+                )
+            }
+            if (draft.trustSelfSigned) {
+                Text(
+                    draft.pinnedCertSha256?.let { "Pinned certificate SHA-256: $it" } ?: PIN_PENDING_HINT,
+                    color = TextSecondary,
+                    style = MaterialTheme.typography.bodyMedium,
                 )
             }
         }

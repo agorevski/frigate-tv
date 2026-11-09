@@ -126,8 +126,9 @@ Each script exits non-zero on failure. Read the `PASS`/`FAIL` lines and the logs
 app/src/main/java/com/frigatetv/app/
   MainActivity.kt        activity; keeps screen on; foreground/background hooks
   AppViewModel.kt        profiles, connection state, health checks, preferences
-  data/                  models, Frigate HTTP client, DataStore persistence;
+  data/                  models, Frigate HTTP client, DataStore persistence, Keystore secret wrapper;
                          FrigateRepository is the per-profile entry point for screens
+  auth/                  per-profile login (token), self-signed certificate pinning
   player/                ExoPlayer lifecycle: decoder cap (PlayerPool), reconnect
                          backoff, focus settle; the pure logic has JVM tests
   ui/                    shared components (focus, images, states), theme, shell,
@@ -149,8 +150,11 @@ Frigate endpoints in use (verified on 0.16.2): `/api/version`, `/api/config`, `/
 - A stream that errors is rebuilt with exponential backoff (2 s to 30 s). The old player is released before a new decoder is created; the TV's hardware decoder pool fails otherwise.
 - Connectivity changes trigger an immediate retry. The app also runs a server health check about every 32 s.
 - Profiles are validated with a connection test before activation. A failed test keeps the current profile.
-- Cleartext HTTP is enabled app-wide for the LAN Frigate server; tighten this before any release.
-- Networking: one OkHttp client (`data/FrigateHttp.kt`, 5 s connect, 10 s read) serves the API, Coil image loads and Media3 HLS/MP4 playback, so they share keep-alive connections. JSON is decoded with kotlinx.serialization (`data/FrigateDto.kt`). Live snapshots are never cached; event thumbnails are cached in memory and on disk.
+- Cleartext HTTP is allowed app-wide (`network_security_config.xml`) because Android cannot scope it to LAN addresses. Login tokens sent to an HTTP profile cross the LAN unencrypted; use HTTPS for remote access. Only system CAs are trusted globally.
+- Frigate login (authenticated port, Frigate 0.14+): a profile with "Login" set posts its username and password to `/api/login` and keeps the `frigate_token` cookie in memory. A 401 triggers one re-login and one retry; a second 401 is an error. Test connection logs in first, so a bad password reports "Invalid username or password". RTSP (go2rtc) is not authenticated by the app; if go2rtc requires RTSP credentials, live video will not play.
+- Security: the password is stored only encrypted (AES-256-GCM, Android Keystore key) and is never logged. The token is never persisted. `allowBackup` is off. HTTP logging is not enabled.
+- Self-signed HTTPS: "Trust self-signed" pins the server certificate's SHA-256 on the first test or save (trust on first use). The test shows the fingerprint; compare it with the server's. The pin is enforced for that profile only. Switching trust off and on again re-pins.
+- Networking: one OkHttp client (`data/FrigateHttp.kt`, 5 s connect, 10 s read) serves the API, Coil image loads and Media3 HLS/MP4 playback, so they share keep-alive connections. Each profile gets a derived client (`auth/ProfileClients.kt`) for its login token and pinned certificate. JSON is decoded with kotlinx.serialization (`data/FrigateDto.kt`). Live snapshots are never cached; event thumbnails are cached in memory and on disk.
 
 ## Not yet done
 
@@ -158,4 +162,4 @@ Frigate endpoints in use (verified on 0.16.2): `/api/version`, `/api/config`, `/
 - Network-loss recovery test on device
 - Audio verification
 - Full acceptance run from `instructions.md` §18
-- Authentication: Frigate reports auth enabled; most read endpoints answered without credentials during discovery. Behaviour under enforced auth is untested.
+- Frigate login on a server with auth enforced: implemented (see Design notes), not yet verified on hardware.

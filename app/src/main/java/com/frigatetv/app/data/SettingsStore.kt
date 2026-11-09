@@ -17,6 +17,8 @@ private val Context.settingsStore: DataStore<Preferences> by preferencesDataStor
 private val PROFILES_KEY = stringPreferencesKey("profiles_json")
 private val ACTIVE_KEY = stringPreferencesKey("active_profile_id")
 private fun prefsKey(profileId: String) = stringPreferencesKey("prefs_$profileId")
+private const val CREDENTIAL_PREFIX = "cred_"
+private fun credentialKey(profileId: String) = stringPreferencesKey("$CREDENTIAL_PREFIX$profileId")
 
 /*
  * On-disk shapes. Field names are the ones written by the earlier org.json code, so data saved by
@@ -31,6 +33,10 @@ internal data class StoredProfile(
     val port: Int,
     val scheme: String? = null,
     val rtspPort: Int = 8554,
+    val authEnabled: Boolean = false,
+    val username: String? = null,
+    val trustSelfSigned: Boolean = false,
+    val pinnedCertSha256: String? = null,
 )
 
 @Serializable
@@ -49,7 +55,8 @@ class SettingsStore(context: Context) {
     private val store = context.applicationContext.settingsStore
 
     suspend fun readProfiles(): List<ServerProfile> {
-        val raw = store.data.first()[PROFILES_KEY] ?: return emptyList()
+        val prefs = store.data.first()
+        val raw = prefs[PROFILES_KEY] ?: return emptyList()
         return frigateJson.decodeFromString(profilesSerializer, raw).map {
             ServerProfile(
                 id = it.id,
@@ -58,17 +65,39 @@ class SettingsStore(context: Context) {
                 port = it.port,
                 scheme = Scheme.fromWire(it.scheme),
                 rtspPort = it.rtspPort,
+                authEnabled = it.authEnabled,
+                username = it.username,
+                // A password that can no longer be decrypted (for example after the Keystore was
+                // reset) reads as missing; the user is asked to enter it again.
+                password = prefs[credentialKey(it.id)]?.let { enc ->
+                    runCatching { SecretBox.decrypt(enc) }.getOrNull()
+                },
+                trustSelfSigned = it.trustSelfSigned,
+                pinnedCertSha256 = it.pinnedCertSha256,
             )
         }
     }
 
     suspend fun readActiveId(): String? = store.data.first()[ACTIVE_KEY]
 
+    /**
+     * Writes the profile list. Passwords are encrypted into their own entries; entries for profiles
+     * that are no longer in [profiles] are removed.
+     */
     suspend fun writeProfiles(profiles: List<ServerProfile>, activeId: String) {
         val encoded = frigateJson.encodeToString(profilesSerializer, profiles.map { it.toStored() })
         store.edit { prefs ->
             prefs[PROFILES_KEY] = encoded
             prefs[ACTIVE_KEY] = activeId
+            prefs.asMap().keys
+                .filter { it.name.startsWith(CREDENTIAL_PREFIX) }
+                .forEach { prefs.remove(it) }
+            profiles.forEach { p ->
+                val password = p.password
+                if (p.authEnabled && !password.isNullOrEmpty()) {
+                    prefs[credentialKey(p.id)] = SecretBox.encrypt(password)
+                }
+            }
         }
     }
 
@@ -93,6 +122,10 @@ class SettingsStore(context: Context) {
         port = port,
         scheme = scheme.wire,
         rtspPort = rtspPort,
+        authEnabled = authEnabled,
+        username = username,
+        trustSelfSigned = trustSelfSigned,
+        pinnedCertSha256 = pinnedCertSha256,
     )
 
     private fun ProfilePrefs.toStored() = StoredPrefs(

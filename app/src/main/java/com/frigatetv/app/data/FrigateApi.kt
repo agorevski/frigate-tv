@@ -1,5 +1,7 @@
 package com.frigatetv.app.data
 
+import com.frigatetv.app.auth.FrigateSessions
+import com.frigatetv.app.auth.HTTP_UNAUTHORIZED
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerializationException
@@ -9,25 +11,28 @@ import kotlinx.serialization.json.decodeFromJsonElement
 import okhttp3.Call
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
 import java.io.IOException
 import java.net.URLEncoder
+import java.security.cert.CertificateException
 
 /**
  * Stateless client for the Frigate HTTP API (verified against Frigate 0.16.2).
  * Every call runs on Dispatchers.IO and throws [FrigateException] on failure.
  *
- * [client] is normally [FrigateHttp.client]. A per-profile client (for example one with auth) can be passed instead.
+ * [clientFor] supplies the HTTP client for a profile. By default it is the profile's authenticated
+ * client ([FrigateSessions]), which attaches the login token and re-logs in on 401.
  */
-class FrigateApi(private val client: OkHttpClient = FrigateHttp.client) {
+class FrigateApi(private val clientFor: (ServerProfile) -> OkHttpClient = FrigateSessions::clientFor) {
 
     suspend fun version(profile: ServerProfile): String = withContext(Dispatchers.IO) {
-        get("${profile.baseUrl}/api/version").trim().ifEmpty {
+        get(profile, "${profile.baseUrl}/api/version").trim().ifEmpty {
             throw FrigateException("Empty version response")
         }
     }
 
     suspend fun cameras(profile: ServerProfile): List<CameraInfo> = withContext(Dispatchers.IO) {
-        parse { parseCameras(get("${profile.baseUrl}/api/config")) }
+        parse { parseCameras(get(profile, "${profile.baseUrl}/api/config")) }
     }
 
     suspend fun events(
@@ -44,7 +49,7 @@ class FrigateApi(private val client: OkHttpClient = FrigateHttp.client) {
             if (inProgress) append("&in_progress=1")
         }
         parse {
-            frigateJson.decodeFromString<List<EventDto>>(get("${profile.baseUrl}/api/events?$query"))
+            frigateJson.decodeFromString<List<EventDto>>(get(profile, "${profile.baseUrl}/api/events?$query"))
                 .map { it.toDomain() }
         }
     }
@@ -58,7 +63,7 @@ class FrigateApi(private val client: OkHttpClient = FrigateHttp.client) {
         parse {
             val url = "${profile.baseUrl}/api/${encode(camera)}/recordings" +
                 "?after=${after.toLong()}&before=${before.toLong()}"
-            frigateJson.decodeFromString<List<RecordingDto>>(get(url)).mapNotNull { r ->
+            frigateJson.decodeFromString<List<RecordingDto>>(get(profile, url)).mapNotNull { r ->
                 val end = r.endTime ?: return@mapNotNull null
                 RecordingSegment(r.startTime ?: throw SerializationException("recording without start_time"), end)
             }
@@ -87,22 +92,27 @@ class FrigateApi(private val client: OkHttpClient = FrigateHttp.client) {
      *
      * OkHttp keeps connections alive and pools them, so each poll or thumbnail reuses a socket.
      */
-    private fun get(url: String): String {
-        val call = buildCall(url)
+    private fun get(profile: ServerProfile, url: String): String {
+        val call = buildCall(clientFor(profile), url)
         try {
             return call.execute().use { response ->
-                if (!response.isSuccessful) {
-                    throw FrigateException("Server returned HTTP ${response.code}", response.code)
-                }
+                if (!response.isSuccessful) throw httpFailure(response)
                 response.body?.string().orEmpty()
             }
         } catch (e: IOException) {
-            throw FrigateException("Cannot reach server (${e.javaClass.simpleName})", cause = e)
+            throw networkFailure(e)
         }
     }
 
+    private fun httpFailure(response: Response): FrigateException =
+        if (response.code == HTTP_UNAUTHORIZED) {
+            FrigateException("Login required or rejected. Check the server's login settings.", response.code)
+        } else {
+            FrigateException("Server returned HTTP ${response.code}", response.code)
+        }
+
     /** No Accept-Encoding header is set, so OkHttp negotiates gzip and decodes it transparently. */
-    private fun buildCall(url: String): Call = try {
+    private fun buildCall(client: OkHttpClient, url: String): Call = try {
         client.newCall(Request.Builder().url(url).header("Accept", "application/json, image/*, */*").build())
     } catch (e: IllegalArgumentException) {
         throw FrigateException("Invalid server address", cause = e)
@@ -164,3 +174,14 @@ private fun EventDto.toDomain(): FrigateEvent = FrigateEvent(
     hasSnapshot = hasSnapshot,
     score = data?.topScore ?: data?.score,
 )
+
+/** Maps a transport failure to a [FrigateException]. A rejected TLS certificate gets its own message. */
+internal fun networkFailure(e: IOException): FrigateException {
+    val certificate = generateSequence<Throwable>(e) { it.cause }
+        .firstOrNull { it is CertificateException }
+    return if (certificate != null) {
+        FrigateException("Server certificate rejected: ${certificate.message}", cause = e)
+    } else {
+        FrigateException("Cannot reach server (${e.javaClass.simpleName})", cause = e)
+    }
+}
