@@ -73,6 +73,19 @@ adb -s "$TV_ADB_SERIAL" install -r app/build/outputs/apk/debug/app-debug.apk
 
 The debug APK is written to `app/build/outputs/apk/debug/`.
 
+## Code quality
+
+Detekt (with ktlint formatting rules) and Android Lint run against baselines (`config/detekt/baseline.xml`, `app/lint-baseline.xml`). New findings fail the build. Requires JDK 17.
+
+```sh
+./gradlew detekt                 # static analysis + ktlint style (config/detekt/detekt.yml, .editorconfig)
+./gradlew detekt --auto-correct  # auto-fix ktlint style issues (use with care; touches source)
+./gradlew :app:lintDebug         # Android Lint
+./gradlew :app:assembleDebug detekt :app:lintDebug   # everything
+```
+
+Regenerate a baseline only after deliberately accepting new findings: `./gradlew :app:detektBaseline`, or delete `app/lint-baseline.xml` and rerun `:app:lintDebug`.
+
 ## Tests
 
 Device and API checks are re-runnable scripts in `tests/`. They read `.env` and write output and logs to `tests/out/<timestamp>/` (gitignored).
