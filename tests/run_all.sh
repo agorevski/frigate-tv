@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Runs every test script in order and writes all output to tests/out/<timestamp>/.
+# Runs every device and live-server script in order and writes all output to tests/out/<timestamp>/.
+# Checks that need no device or server (API contract, profile and recovery logic, event filters)
+# are JVM unit tests and do not run here: ./gradlew :app:testDebugUnitTest.
 # Usage: tests/run_all.sh [script-name-prefix ...]   e.g. tests/run_all.sh 04 05
 set -u
 set -o pipefail

@@ -2,11 +2,13 @@
 # Profile lifecycle and network recovery (instructions.md sections 10-12, scenarios 14-19):
 #  1. add a second profile for the real Frigate server (host and ports from .env) and activate it
 #  2. switch back to Home
-#  3. edit that profile to an unreachable port; the save must be refused and Home kept
-#  4. delete the profile and confirm it is gone after a relaunch
+#  3. edit that profile to an unreachable port; the save must be refused and the form stays open
+#  4. delete the profile
 #  5. turn Wi-Fi off, expect Offline, turn it back on, expect automatic reconnection
-#  6. relaunch and confirm Home is still the active profile
 # Everything is located by label, and each wait polls the UI instead of sleeping.
+# The profile logic (refused saves, what is stored, activation, delete, relaunch, Offline and
+# reconnect state) is unit-tested in app/src/test/java/com/frigatetv/app/logic/AppViewModelProfileTest.kt.
+# This script keeps what needs the device: the IME and form, the live streams, and the real Wi-Fi outage.
 # Wi-Fi is only switched off when ADB runs over USB: wireless ADB (host:port serial, the
 # project's normal workflow) travels over that same Wi-Fi and would be cut off.
 . "$(dirname "$0")/lib.sh"
@@ -200,12 +202,6 @@ set_field() {
 
 halt() { finish; exit 1; }
 
-# check-style helper for conditions that must be false.
-expect_absent() {
-  local desc="$1"; shift
-  if "$@" >/dev/null 2>&1; then fail "$desc"; else pass "$desc"; fi
-}
-
 skip() {
   SKIPPED=$((SKIPPED + 1))
   echo "SKIPPED $*"
@@ -277,19 +273,14 @@ wait_for "test connection reports Cannot reach server" 30 ui_contains "Cannot re
 if focus_button "Save & activate"; then key KEYCODE_DPAD_CENTER 1; else abort "focused Save & activate (edit)"; fi
 wait_for "save refused and the current profile kept" 15 ui_contains "Keeping the current profile"
 check "edit form stays open after the refused save" ui_text "Edit server profile"
-check "Home is still the header profile after the refused save" header_has "$HOME_NAME"
 screenshot network-save-refused
 if focus_button "Cancel"; then key KEYCODE_DPAD_CENTER 1; else fail "focused Cancel (edit)"; fi
 wait_for "edit form closed" 10 form_closed
-expect_absent "refused port was not stored" ui_contains ":$BAD_PORT"
 
-# ---- 4. Delete the test profile; it must stay gone after a relaunch.
+# ---- 4. Delete the test profile.
 if ! focus_row_button "$PROFILE_NAME" Delete; then abort "focused Delete on $PROFILE_NAME"; fi
 key KEYCODE_DPAD_CENTER 2
 wait_for "test profile removed from the list" 15 row_gone "$PROFILE_NAME"
-launch_fresh
-goto_tab settings; wait_for "Settings tab opened after relaunch" 10 ui_text "Server profiles"
-wait_for "test profile is gone after relaunch" 10 row_gone "$PROFILE_NAME"
 
 # ---- 5. Wi-Fi loss and automatic recovery.
 # The outage is scheduled on the TV, so it works over wireless ADB: the TV disables Wi-Fi,
@@ -311,12 +302,5 @@ else
   WIFI_OFF=0
   skip "network recovery: could not schedule the Wi-Fi outage on the TV (nohup or ps missing)"
 fi
-
-# ---- 6. Restart: Home must still be the active profile.
-launch_fresh
-wait_for "Home is still the header profile after restart" 30 header_has "$HOME_NAME"
-goto_tab settings; wait_for "Settings tab opened after restart" 10 ui_text "Server profiles"
-check "Home row is marked active after restart" [ "$(row_button_bounds "$HOME_NAME" Activate)" = none ]
-screenshot network-after-restart
 
 finish

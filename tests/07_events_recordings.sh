@@ -54,14 +54,7 @@ cards_have_thumbs_and_cameras() {
   [ "$bad" -eq 0 ]
 }
 
-# Every visible card's label starts with the given prefix (filter result check).
-cards_all_labelled() {
-  local rows n bad
-  rows="$(event_cards)"
-  n="$(echo "$rows" | grep -c .)"
-  bad="$(echo "$rows" | awk -F'|' -v p="$1" 'index($2, p) != 1' | grep -c .)"
-  [ "$n" -ge 1 ] && [ "$bad" -eq 0 ]
-}
+cards_present() { [ "$(event_cards | grep -c .)" -ge 1 ]; }
 
 # Two screenshots a moment apart differ in the video area, so playback is advancing.
 frames_change() {
@@ -189,9 +182,9 @@ wait_for "Vehicles filter shows the empty-state message (no cards)" 20 empty_mes
 screenshot events-vehicles
 check "pid alive after Vehicles filter" pid_alive
 
-# Person filter: the list must come back with only person events.
+# Person filter: which labels each filter keeps is a unit test (EventLabelFilterTest). Here the list must repopulate.
 press_label People
-wait_for "People filter shows only person event cards" 20 cards_all_labelled "Person"
+wait_for "People filter repopulates the event list" 20 cards_present
 screenshot events-people
 check "pid alive after People filter" pid_alive
 
