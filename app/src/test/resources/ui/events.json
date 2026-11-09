@@ -1,0 +1,41 @@
+[
+  {
+    "id": "evt-front-person",
+    "camera": "front",
+    "label": "person",
+    "start_time": {{NOW-600}},
+    "end_time": {{NOW-580}},
+    "has_clip": true,
+    "has_snapshot": true,
+    "data": { "top_score": 0.91 }
+  },
+  {
+    "id": "evt-mailbox-person",
+    "camera": "mailbox",
+    "label": "person",
+    "start_time": {{NOW-1800}},
+    "end_time": {{NOW-1750}},
+    "has_clip": true,
+    "has_snapshot": true,
+    "data": { "top_score": 0.84 }
+  },
+  {
+    "id": "evt-driveway-car",
+    "camera": "driveway",
+    "label": "car",
+    "start_time": {{NOW-3600}},
+    "end_time": {{NOW-3550}},
+    "has_clip": true,
+    "has_snapshot": true,
+    "data": { "top_score": 0.77 }
+  },
+  {
+    "id": "evt-back-cat",
+    "camera": "back",
+    "label": "cat",
+    "start_time": {{NOW-7200}},
+    "end_time": null,
+    "has_clip": false,
+    "has_snapshot": false
+  }
+]

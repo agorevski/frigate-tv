@@ -1,0 +1,54 @@
+{
+  "cameras": {
+    "front": {
+      "enabled": true,
+      "detect": { "width": 640, "height": 360 },
+      "ffmpeg": {
+        "inputs": [
+          { "path": "rtsp://127.0.0.1:8554/front_sub", "roles": ["detect"] },
+          { "path": "rtsp://127.0.0.1:8554/front_main", "roles": ["record"] }
+        ]
+      }
+    },
+    "back": {
+      "enabled": true,
+      "detect": { "width": 640, "height": 360 },
+      "ffmpeg": {
+        "inputs": [
+          { "path": "rtsp://127.0.0.1:8554/back_sub", "roles": ["detect"] },
+          { "path": "rtsp://127.0.0.1:8554/back_main", "roles": ["record"] }
+        ]
+      }
+    },
+    "mailbox": {
+      "enabled": true,
+      "detect": { "width": 640, "height": 360 },
+      "ffmpeg": {
+        "inputs": [
+          { "path": "rtsp://127.0.0.1:8554/mailbox_sub", "roles": ["detect"] },
+          { "path": "rtsp://127.0.0.1:8554/mailbox_main", "roles": ["record"] }
+        ]
+      }
+    },
+    "driveway": {
+      "enabled": true,
+      "detect": { "width": 640, "height": 360 },
+      "ffmpeg": {
+        "inputs": [
+          { "path": "rtsp://127.0.0.1:8554/driveway_sub", "roles": ["detect"] },
+          { "path": "rtsp://127.0.0.1:8554/driveway_main", "roles": ["record"] }
+        ]
+      }
+    },
+    "reolink_camera": {
+      "enabled": true,
+      "detect": { "width": 640, "height": 360 },
+      "ffmpeg": {
+        "inputs": [
+          { "path": "rtsp://127.0.0.1:8554/reolink_camera_sub", "roles": ["detect"] },
+          { "path": "rtsp://127.0.0.1:8554/reolink_camera_main", "roles": ["record"] }
+        ]
+      }
+    }
+  }
+}

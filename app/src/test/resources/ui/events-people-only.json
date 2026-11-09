@@ -1,0 +1,22 @@
+[
+  {
+    "id": "evt-front-person",
+    "camera": "front",
+    "label": "person",
+    "start_time": {{NOW-600}},
+    "end_time": {{NOW-580}},
+    "has_clip": true,
+    "has_snapshot": true,
+    "data": { "top_score": 0.91 }
+  },
+  {
+    "id": "evt-mailbox-person",
+    "camera": "mailbox",
+    "label": "person",
+    "start_time": {{NOW-1800}},
+    "end_time": {{NOW-1750}},
+    "has_clip": true,
+    "has_snapshot": true,
+    "data": { "top_score": 0.84 }
+  }
+]

@@ -6,9 +6,9 @@ This document describes the test layers, what each device script checks, and the
 
 | Layer | Location | Runs on | Status |
 | --- | --- | --- | --- |
-| JVM unit tests | `app/src/test/` | Host JVM | Available: `contract/` (Frigate API fixtures), `logic/` (profiles, recovery, event filter). Run with `./gradlew :app:testDebugUnitTest`. |
-| Robolectric Compose UI tests | `app/src/test/` | Host JVM | In progress. Not yet in the tree at the time of writing. |
-| Static checks (detekt, lint) | Gradle | Host JVM | In progress. Configuration is being added to the build; not yet verified here. |
+| JVM unit tests | `app/src/test/` | Host JVM | Available: `data/` (parsing, URLs, settings format), `contract/` (Frigate API fixtures), `logic/` (profiles, recovery, event filter), `player/` (backoff, pool cap, focus settle). Run with `./gradlew :app:testDebugUnitTest`. |
+| Robolectric Compose UI tests | `app/src/test/java/com/frigatetv/app/ui/` | Host JVM | Available. Run with `./gradlew :app:testDebugUnitTest`; they use a local MockWebServer for the Frigate API. |
+| Static checks (detekt, lint) | Gradle | Host JVM | Available: `./gradlew detekt :app:lintDebug` |
 | Device and API scripts | `tests/*.sh` | Host, driving a TV over ADB | Available |
 | Manual acceptance | This document | Physical TV or phone | Partly done; see the checklist |
 
