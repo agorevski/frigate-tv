@@ -45,6 +45,14 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    testOptions {
+        unitTests {
+            // Robolectric needs merged resources and the manifest for Compose UI tests.
+            isIncludeAndroidResources = true
+            isReturnDefaultValues = true
+        }
+    }
+
     lint {
         baseline = file("lint-baseline.xml")
         abortOnError = true
@@ -95,6 +103,16 @@ dependencies {
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.kotlinx.coroutines.android)
+
+    testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.okhttp.mockwebserver)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
+    testImplementation(libs.androidx.test.ext.junit)
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation(libs.androidx.compose.ui.test.junit4)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
 
     // Formatting rules (ktlint) run through the detekt task.
     detektPlugins(libs.detekt.formatting)
