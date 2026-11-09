@@ -1,0 +1,70 @@
+{
+  "version": "0.16.2",
+  "mqtt": {"enabled": false},
+  "go2rtc": {
+    "streams": {
+      "front": ["ffmpeg:rtsp://camera-front.lan/stream1"],
+      "front_sub": ["ffmpeg:rtsp://camera-front.lan/stream2"]
+    }
+  },
+  "detect": {"enabled": true, "fps": 5},
+  "cameras": {
+    "front": {
+      "enabled": true,
+      "ffmpeg": {
+        "inputs": [
+          {"path": "rtsp://127.0.0.1:8554/front?video=copy", "roles": ["record"]},
+          {"path": "rtsp://127.0.0.1:8554/front_sub?video=copy", "roles": ["detect"]}
+        ]
+      },
+      "detect": {"enabled": true, "height": 240, "width": 352, "fps": 5, "min_initialized": 2},
+      "record": {"enabled": true, "retain": {"days": 7}}
+    },
+    "back": {
+      "enabled": true,
+      "ffmpeg": {
+        "inputs": [
+          {"path": "rtsp://127.0.0.1:8554/back?video=copy", "roles": ["record"]},
+          {"path": "rtsp://127.0.0.1:8554/back_sub?video=copy", "roles": ["detect"]}
+        ]
+      },
+      "detect": {"enabled": true, "height": 480, "width": 704}
+    },
+    "reolink_camera": {
+      "enabled": true,
+      "ffmpeg": {
+        "inputs": [
+          {"path": "rtsp://127.0.0.1:8554/reolink_camera", "roles": ["record"]},
+          {"path": "rtsp://127.0.0.1:8554/reolink_camera_sub", "roles": ["detect"]}
+        ]
+      },
+      "detect": {"enabled": true, "height": 720, "width": 1280}
+    },
+    "garage": {
+      "enabled": false,
+      "ffmpeg": {
+        "inputs": [
+          {"path": "rtsp://127.0.0.1:8554/garage", "roles": ["record"]},
+          {"path": "rtsp://127.0.0.1:8554/garage_sub", "roles": ["detect"]}
+        ]
+      },
+      "detect": {"enabled": false, "height": 480, "width": 704}
+    },
+    "patio": {
+      "ffmpeg": {
+        "inputs": [
+          {"path": "rtsp://127.0.0.1:8554/patio_main", "roles": ["record"]}
+        ]
+      }
+    },
+    "shed": {
+      "enabled": true,
+      "ffmpeg": {
+        "inputs": [
+          {"path": "http://127.0.0.1/shed.m3u8", "roles": ["detect"]}
+        ]
+      },
+      "detect": {"enabled": true, "height": 0, "width": 0}
+    }
+  }
+}

@@ -24,7 +24,7 @@ private fun prefsKey(profileId: String) = stringPreferencesKey("prefs_$profileId
  */
 
 @Serializable
-private data class StoredProfile(
+internal data class StoredProfile(
     val id: String,
     val name: String,
     val host: String,
@@ -34,7 +34,7 @@ private data class StoredProfile(
 )
 
 @Serializable
-private data class StoredPrefs(
+internal data class StoredPrefs(
     val order: List<String> = emptyList(),
     val favorites: List<String> = emptyList(),
     val columns: Int = 0,
