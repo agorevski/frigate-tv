@@ -4,13 +4,16 @@
 #  2. switch back to Home
 #  3. edit that profile to an unreachable port; the save must be refused and the form stays open
 #  4. delete the profile
-#  5. turn Wi-Fi off, expect Offline, turn it back on, expect automatic reconnection
+#  5. turn Wi-Fi off on the TV for 40 s, then back on; expect the ADB link to drop and return, and
+#     the app to reconnect with LIVE tiles
 # Everything is located by label, and each wait polls the UI instead of sleeping.
 # The profile logic (refused saves, what is stored, activation, delete, relaunch, Offline and
 # reconnect state) is unit-tested in app/src/test/java/com/frigatetv/app/logic/AppViewModelProfileTest.kt.
 # This script keeps what needs the device: the IME and form, the live streams, and the real Wi-Fi outage.
-# Wi-Fi is only switched off when ADB runs over USB: wireless ADB (host:port serial, the
-# project's normal workflow) travels over that same Wi-Fi and would be cut off.
+# The script does not check the ADB transport. It turns Wi-Fi off whenever the TV is reachable,
+# including over wireless ADB (host:port serial, the project's normal workflow), which drops the
+# ADB link for the outage. The outage is scheduled on the TV, so Wi-Fi comes back on even if this
+# script or the link is gone.
 . "$(dirname "$0")/lib.sh"
 
 : "${FRIGATE_HOST:?FRIGATE_HOST is not set in .env}"

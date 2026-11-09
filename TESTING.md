@@ -6,16 +6,16 @@ This document describes the test layers, what each device script checks, and the
 
 | Layer | Location | Runs on | Status |
 | --- | --- | --- | --- |
-| JVM unit tests | `app/src/test/` | Host JVM | Available: `data/` (parsing, URLs, settings format), `contract/` (Frigate API fixtures), `logic/` (profiles, recovery, event filter), `player/` (backoff, pool cap, focus settle). Run with `./gradlew :app:testDebugUnitTest`. |
+| JVM unit tests | `app/src/test/` | Host JVM | Available: `data/` (parsing, URLs, settings format), `contract/` (Frigate API fixtures), `auth/` (login, `frigate_token` cookie, one re-login on 401), `logic/` (profiles, recovery, event filter), `player/` (backoff, pool cap, focus settle). Run with `./gradlew :app:testDebugUnitTest`. Certificate pinning has no test. |
 | Robolectric Compose UI tests | `app/src/test/java/com/frigatetv/app/ui/` | Host JVM | Available. Run with `./gradlew :app:testDebugUnitTest`; they use a local MockWebServer for the Frigate API. |
 | Static checks (detekt, lint) | Gradle | Host JVM | Available: `./gradlew detekt :app:lintDebug` |
-| Device and API scripts | `tests/*.sh` | Host, driving a TV over ADB | Available |
+| Device and API scripts | `tests/*.sh` | Host, driving a TV over ADB | Available. Not run on the merged refactor and auth code. |
 | Manual acceptance | This document | Physical TV or phone | Partly done; see the checklist |
 
-Host checks:
+Host checks (the same set as CONTRIBUTING.md). Set `JAVA_HOME` to JDK 17 if your default `java` is another version:
 
 ```sh
-./gradlew detekt :app:lintDebug :app:testDebugUnitTest
+JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 ./gradlew :app:assembleDebug :app:testDebugUnitTest detekt :app:lintDebug
 ```
 
 Checks that were shell scripts and now run as unit tests (no device or server needed):
@@ -36,7 +36,7 @@ Checks that were shell scripts and now run as unit tests (no device or server ne
 - `JAVA_HOME` set to JDK 17, or a JDK 17 found by `tests/lib.sh`.
 - `ANDROID_HOME` pointing at an SDK with platform 35. `adb` on `PATH`, or under `$ANDROID_HOME/platform-tools`.
 - On the host: `bash`, `curl`, `nc` (netcat), `python3`, and Pillow (`PIL`) for `07_events_recordings.sh`.
-- For scripts 01, 02, and 04 to 09: a TV reachable at `TV_ADB_SERIAL` over wireless ADB, with Wireless debugging enabled and the device paired once.
+- For scripts 01, 02, and 04 to 09: a TV reachable at `TV_ADB_SERIAL` (or `ADB_SERIAL`, which overrides it, for example to run against a phone) over wireless ADB, with Wireless debugging enabled and the device paired once.
 - For scripts 01, 03, and 04 to 09: the Frigate server at `FRIGATE_HOST` reachable, with five cameras and go2rtc streams `front_sub` and `back_sub`.
 - Some scripts depend on the reference server's content. Camera names (Front, Back, Mailbox, Driveway, Reolink Camera), filter labels, and event and recording data are assumed. A different server needs script changes.
 
@@ -49,6 +49,8 @@ bash tests/04_live_smoke.sh   # one script
 ```
 
 `run_all.sh` writes every script's log to a single folder, `tests/out/<timestamp>/`, as `NN_name.log`. Run alone, a script creates its own `tests/out/<timestamp>/` folder. Scripts exit non-zero on any failed check and print one `PASS` or `FAIL` line per check. Read those lines and the logs. `tests/out/` is gitignored.
+
+Device scripts use `ADB_SERIAL` from the environment if it is set, otherwise `TV_ADB_SERIAL` from `.env`. Script 02 installs the app on that device, and script 08 turns the device's Wi-Fi off for about 40 seconds. Run them only against a device you intend to change.
 
 ### Outputs
 
@@ -127,9 +129,9 @@ Additional items from the instructions that no script covers:
 
 ## Known limitations
 
-- Some focus checks in `04_live_smoke.sh` were still failing when `PLAN.md` was last updated. Check the current log before relying on the script.
+- Some focus checks in `04_live_smoke.sh` were failing in an earlier run. Re-run it and check the current log before relying on it.
 - `reolink_camera` has no working RTSP producer on the reference server. Its tile is OFFLINE by design.
 - Some camera on-screen clocks are wrong (Front about 10 minutes behind, Mailbox about an hour off). Recordings and events are correct. The on-screen overlay is not.
 - Wi-Fi outage tests depend on the TV's shell tools (`svc`, `nohup`, `ps`) and on the ADB link reconnecting.
-- Authentication under enforced Frigate auth has not been tested.
+- Frigate login is implemented and unit-tested, but has not been tested against a server with auth enforced, nor on a device. No script covers it. Certificate pinning has no automated test.
 - Device tests are timing-based and depend on the reference server's data. Failures can reflect the environment rather than the app. Read the logs before changing the app.

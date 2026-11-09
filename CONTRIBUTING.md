@@ -3,7 +3,7 @@
 ## Prerequisites
 
 - macOS or Linux (tested on Ubuntu 24.04)
-- JDK 17. Set `JAVA_HOME` (for example `/usr/lib/jvm/java-17-openjdk-amd64`), or let `tests/lib.sh` find one.
+- JDK 17. Set `JAVA_HOME` (for example `/usr/lib/jvm/java-17-openjdk-amd64`), or let `tests/lib.sh` find one. Prefix Gradle commands with it if your default `java` is another version.
 - Android SDK with platform 35, build-tools 35.0.0, and platform-tools. Set `ANDROID_HOME`.
 - A Frigate server on the LAN, and optionally a Google TV or Android device with Wireless debugging for device tests.
 
@@ -16,15 +16,16 @@ Machine-specific values live in `.env` at the repo root. It is gitignored. Copy 
 ## Build
 
 ```sh
-./gradlew :app:assembleDebug
+JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 ./gradlew :app:assembleDebug
 ```
 
 ## Checks
 
-Run these before opening a PR:
+Run these before opening a PR. There is no CI workflow, so run them locally:
 
 ```sh
-./gradlew detekt :app:lintDebug :app:testDebugUnitTest
+JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 ./gradlew :app:assembleDebug :app:testDebugUnitTest detekt :app:lintDebug
+bash -n tests/*.sh        # syntax check for the device scripts
 ```
 
 Device tests need a connected TV and a reachable Frigate server:
@@ -43,6 +44,7 @@ See [TESTING.md](TESTING.md) for what each layer covers.
 - TV input: every new screen or control must work with the D-pad alone. Check that focus is visible and returns correctly after BACK.
 - Never commit `.env`, server addresses, ADB pairing codes, keystores, or other secrets. Use `.env.example` for placeholders.
 - Comment only where the code needs clarification.
+- By contributing, you agree that your changes are released under the [MIT license](LICENSE).
 
 ## Pull requests
 
