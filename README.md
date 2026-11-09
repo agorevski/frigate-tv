@@ -88,16 +88,28 @@ Regenerate a baseline only after deliberately accepting new findings: `./gradlew
 
 ## Tests
 
-Device and API checks are re-runnable scripts in `tests/`. They read `.env` and write output and logs to `tests/out/<timestamp>/` (gitignored).
+Checks that need no device or server run on the JVM:
+
+```sh
+./gradlew :app:testDebugUnitTest
+```
+
+- `app/src/test/.../contract/`: `FrigateApi` against Frigate 0.16.2 response fixtures in `app/src/test/resources/api/` (served by MockWebServer). Covers request paths and query strings, status and error handling, config and event parsing, and media URLs.
+- `app/src/test/.../logic/`: `AppViewModel` profile lifecycle, failed connection tests, server outage and network-loss recovery (Robolectric, real DataStore), and the Events label filter.
+
+Device and live-server checks are re-runnable scripts in `tests/`. They read `.env` and write output and logs to `tests/out/<timestamp>/` (gitignored).
 
 | Script | What it checks |
 | --- | --- |
 | `01_check_env.sh` | Toolchain, `.env`, TV reachable, Frigate reachable |
 | `02_build_install.sh` | Builds the APK, installs it, launches, checks for crashes |
-| `03_frigate_api.sh` | Frigate endpoints and RTSP streams the app depends on (no device needed) |
+| `03_frigate_api.sh` | Frigate endpoints and go2rtc RTSP streams answer on the real server (no device needed) |
 | `04_live_smoke.sh` | Live grid, focus, fullscreen, camera switch, BACK |
 | `05_tabs.sh` | Each tab loads and the app stays alive |
-| `06_profile_failure.sh` | Unreachable profile: test fails, activation is refused |
+| `06_profile_failure.sh` | Unreachable profile through the real form: refusal message is shown |
+| `07_events_recordings.sh` | Event cards and thumbnails, Vehicles empty state, playback advancing, recordings |
+| `08_profile_network.sh` | Profile form on device, live streams after switching, real Wi-Fi outage and reconnect |
+| `09_soak.sh` | 30-minute simultaneous playback soak (memory, CPU, decoder errors) |
 
 Run everything, or a subset by prefix:
 

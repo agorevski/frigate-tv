@@ -1,0 +1,19 @@
+[
+  {
+    "id": "1794201338.914402-w2mz7c",
+    "camera": "mailbox",
+    "label": "person",
+    "zones": [],
+    "start_time": 1794201338.914402,
+    "end_time": null,
+    "has_clip": false,
+    "has_snapshot": false,
+    "plus_id": null,
+    "retain_indefinitely": false,
+    "sub_label": null,
+    "top_score": null,
+    "false_positive": null,
+    "box": null,
+    "data": {}
+  }
+]

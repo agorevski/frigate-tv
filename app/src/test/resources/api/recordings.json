@@ -1,0 +1,38 @@
+[
+  {
+    "id": "1794196800.000000-rec001",
+    "camera": "driveway",
+    "start_time": 1794196800.0,
+    "end_time": 1794197400.5,
+    "duration": 600.5,
+    "motion": 412,
+    "objects": 3,
+    "segment_size": 0.42,
+    "dBFPS": 0,
+    "motion_heatmap": null,
+    "path": "/media/frigate/recordings/2026-11-07/21/driveway/00.00.mp4",
+    "codec_name": "h264"
+  },
+  {
+    "id": "1794197400.500000-rec002",
+    "camera": "driveway",
+    "start_time": 1794197400.5,
+    "end_time": null,
+    "duration": 0,
+    "motion": 0,
+    "objects": 0,
+    "segment_size": 0,
+    "path": "/media/frigate/recordings/2026-11-07/21/driveway/10.30.mp4"
+  },
+  {
+    "id": "1794198000.000000-rec003",
+    "camera": "driveway",
+    "start_time": 1794198000.0,
+    "end_time": 1794198600.0,
+    "duration": 600.0,
+    "motion": 97,
+    "objects": 1,
+    "segment_size": 0.31,
+    "path": "/media/frigate/recordings/2026-11-07/22/driveway/00.00.mp4"
+  }
+]

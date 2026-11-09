@@ -97,33 +97,18 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
-private enum class LabelFilter(val title: String) {
-    ALL("All"),
-    PERSON("People"),
-    VEHICLE("Vehicles"),
-    OTHER("Other"),
-}
-
 private enum class TimeRange(val title: String, val chip: String, val seconds: Long) {
     DAY("Last 24 hours", "24h", 86_400L),
     WEEK("Last 7 days", "7d", 604_800L),
     MONTH("Last 30 days", "30d", 2_592_000L),
 }
 
-private val VEHICLE_LABELS = setOf("car", "truck", "motorcycle", "bus", "bicycle")
 private val TIME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("MMM d, HH:mm:ss")
 private val DAY_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("EEEE, MMM d")
 private val api = FrigateApi()
 
 /** Hides the clip overlay after this long without a key press. */
 private const val OVERLAY_HIDE_MS = 8_000L
-
-private fun LabelFilter.matches(label: String): Boolean = when (this) {
-    LabelFilter.ALL -> true
-    LabelFilter.PERSON -> label == "person"
-    LabelFilter.VEHICLE -> label in VEHICLE_LABELS
-    LabelFilter.OTHER -> label != "person" && label !in VEHICLE_LABELS
-}
 
 fun formatEventTime(epochSeconds: Double): String =
     TIME_FORMAT.format(Instant.ofEpochMilli((epochSeconds * 1000).toLong()).atZone(ZoneId.systemDefault()))

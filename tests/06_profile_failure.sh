@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# Adds a profile pointing at an unreachable host. Test connection must fail, and
-# "Save & activate" must refuse and keep the current (Home) profile active.
+# Adds a profile pointing at an unreachable host, through the real form, IME and D-pad.
+# The device checks are that the form can be driven, and that the refusal reaches the screen.
+# The refusal logic (failed test, activation refused, Home kept, nothing stored) is in
+# app/src/test/java/com/frigatetv/app/logic/AppViewModelProfileTest.kt.
 # Buttons are located by their label, never by key count. If a button cannot be focused,
 # the script cancels the form instead of pressing anything, so nothing unverified is saved.
 . "$(dirname "$0")/lib.sh"
@@ -35,12 +37,7 @@ else
   fail "focused Save & activate (form cancelled instead)"
   key KEYCODE_BACK 1
 fi
-check "Home is still the header profile" ui_text "Home"
 screenshot profile-activate-refused
 save_logcat profile
 check "no crash during profile flow" check_no_crash profile
-launch_fresh
-goto_tab settings; wait_for "Settings tab opened" 10 ui_text "Server profiles"
-profile_not_saved() { ! ui_contains "$PROFILE_NAME"; }
-check "unreachable profile was not saved (absent from list after restart)" profile_not_saved
 summary

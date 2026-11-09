@@ -1,0 +1,77 @@
+{
+  "version": "0.16.2-4d58206",
+  "environment_vars": {},
+  "logger": {"default": "info"},
+  "auth": {"enabled": false, "reset_admin_password": false},
+  "database": {"path": "/config/frigate.db"},
+  "go2rtc": {"streams": {"front": "rtsp://192.0.2.20/front", "front_sub": "rtsp://192.0.2.20/front_sub"}},
+  "detectors": {"cpu1": {"type": "cpu"}},
+  "cameras": {
+    "front": {
+      "name": "front",
+      "enabled": true,
+      "audio": {"enabled": false, "listen": ["bark", "speech"]},
+      "birdseye": {"enabled": true, "mode": "objects", "order": 0},
+      "detect": {"enabled": true, "height": 240, "width": 352, "fps": 5},
+      "ffmpeg": {
+        "path": "default",
+        "input_args": "preset-rtsp-restream",
+        "inputs": [
+          {"path": "rtsp://127.0.0.1:8554/front?video=copy", "roles": ["record"], "global_args": [], "hwaccel_args": []},
+          {"path": "rtsp://127.0.0.1:8554/front_sub?video=copy", "roles": ["detect"], "global_args": [], "hwaccel_args": []}
+        ]
+      },
+      "record": {"enabled": true, "retain": {"days": 7, "mode": "motion"}}
+    },
+    "back": {
+      "name": "back",
+      "enabled": true,
+      "detect": {"enabled": true, "height": 480, "width": 640, "fps": 5},
+      "ffmpeg": {
+        "inputs": [
+          {"path": "rtsp://127.0.0.1:8554/back?video=copy", "roles": ["record", "audio"]},
+          {"path": "rtsp://127.0.0.1:8554/back_sub?video=copy", "roles": ["detect"]}
+        ]
+      }
+    },
+    "mailbox": {
+      "name": "mailbox",
+      "enabled": true,
+      "detect": {"enabled": true, "height": 360, "width": 640, "fps": 5},
+      "ffmpeg": {
+        "inputs": [
+          {"path": "rtsp://127.0.0.1:8554/mailbox?video=copy", "roles": ["record"]},
+          {"path": "rtsp://127.0.0.1:8554/mailbox_sub?video=copy", "roles": ["detect"]}
+        ]
+      }
+    },
+    "driveway": {
+      "name": "driveway",
+      "enabled": true,
+      "detect": {"enabled": true, "height": 480, "width": 704, "fps": 5},
+      "ffmpeg": {
+        "inputs": [
+          {"path": "rtsp://127.0.0.1:8554/driveway?video=copy", "roles": ["record"]},
+          {"path": "rtsp://127.0.0.1:8554/driveway_sub?video=copy", "roles": ["detect"]}
+        ]
+      }
+    },
+    "reolink_camera": {
+      "name": "reolink_camera",
+      "enabled": true,
+      "detect": {"enabled": true, "height": 0, "width": 0, "fps": 5},
+      "ffmpeg": {
+        "inputs": [
+          {"path": "rtsp://127.0.0.1:8554/reolink_camera?video=copy", "roles": ["record"]},
+          {"path": "rtsp://127.0.0.1:8554/reolink_camera_sub?video=copy", "roles": ["detect"]}
+        ]
+      }
+    }
+  },
+  "audio": {"enabled": false},
+  "ffmpeg": {"path": "default", "retry_interval": 10.0},
+  "detect": {"enabled": true, "fps": 5},
+  "record": {"enabled": true, "retain": {"days": 7}},
+  "snapshots": {"enabled": true, "retain": {"default": 10}},
+  "genai": {"enabled": false}
+}

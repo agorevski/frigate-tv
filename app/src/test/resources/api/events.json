@@ -1,0 +1,73 @@
+[
+  {
+    "id": "1794200664.461925-uigkj2",
+    "camera": "driveway",
+    "label": "person",
+    "zones": [],
+    "start_time": 1794200664.461925,
+    "end_time": 1794200673.652964,
+    "has_clip": true,
+    "has_snapshot": true,
+    "plus_id": null,
+    "retain_indefinitely": false,
+    "sub_label": null,
+    "top_score": null,
+    "false_positive": null,
+    "box": null,
+    "data": {
+      "box": [0.5724, 0.1708, 0.1150, 0.5125],
+      "region": [0.3678, 0.0229, 0.5454, 0.8],
+      "score": 0.796875,
+      "top_score": 0.80078125,
+      "attributes": [],
+      "average_estimated_speed": 0,
+      "velocity_angle": 0,
+      "type": "object",
+      "max_severity": "alert"
+    }
+  },
+  {
+    "id": "1794199512.102277-h3k9ps",
+    "camera": "front",
+    "label": "car",
+    "zones": ["driveway_apron"],
+    "start_time": 1794199512.102277,
+    "end_time": 1794199531.880114,
+    "has_clip": true,
+    "has_snapshot": true,
+    "plus_id": null,
+    "retain_indefinitely": false,
+    "sub_label": "",
+    "top_score": null,
+    "false_positive": false,
+    "box": null,
+    "data": {
+      "score": 0.91,
+      "attributes": [],
+      "type": "object",
+      "max_severity": "detection"
+    }
+  },
+  {
+    "id": "1794196003.772841-q8ttn0",
+    "camera": "back",
+    "label": "dog",
+    "zones": [],
+    "start_time": 1794196003.772841,
+    "end_time": 1794196010.0,
+    "has_clip": false,
+    "has_snapshot": true,
+    "plus_id": null,
+    "retain_indefinitely": false,
+    "sub_label": "Biscuit",
+    "top_score": 0.6,
+    "false_positive": null,
+    "box": null,
+    "data": {
+      "score": 0.6,
+      "attributes": [],
+      "type": "object",
+      "max_severity": "detection"
+    }
+  }
+]
