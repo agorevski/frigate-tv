@@ -88,14 +88,20 @@ Regenerate a baseline only after deliberately accepting new findings: `./gradlew
 
 ## Tests
 
-Checks that need no device or server run on the JVM:
+Checks that need no device or server run on the JVM, together with detekt and lint:
 
 ```sh
-./gradlew :app:testDebugUnitTest
+./gradlew detekt :app:lintDebug :app:testDebugUnitTest
 ```
 
 - `app/src/test/.../contract/`: `FrigateApi` against Frigate 0.16.2 response fixtures in `app/src/test/resources/api/` (served by MockWebServer). Covers request paths and query strings, status and error handling, config and event parsing, and media URLs.
+- `app/src/test/.../data/`: URL building, HTTP behavior, config parsing, models, and the settings store format.
+- `app/src/test/.../auth/`: per-profile login and token handling.
 - `app/src/test/.../logic/`: `AppViewModel` profile lifecycle, failed connection tests, server outage and network-loss recovery (Robolectric, real DataStore), and the Events label filter.
+- `app/src/test/.../player/`: reconnect backoff, the decoder cap in `PlayerPool`, and focus settle.
+- `app/src/test/.../ui/`: Robolectric Compose UI tests for the app shell, Live, Events, Recordings and Settings screens, run against a local MockWebServer.
+
+`TESTING.md` describes each test layer and the manual acceptance checklist.
 
 Device and live-server checks are re-runnable scripts in `tests/`. They read `.env` and write output and logs to `tests/out/<timestamp>/` (gitignored).
 
@@ -136,12 +142,15 @@ app/src/main/java/com/frigatetv/app/
   ui/live/               Live grid, tiles, fullscreen; LiveViewModel (focus, selection)
   ui/events/             event list, filters, cards, detail; EventsViewModel
   ui/recordings/         day timeline, playback; RecordingsViewModel
+app/src/test/            JVM unit tests, contract tests and Robolectric UI tests
 tests/                   re-runnable device and API checks
 ARCHITECTURE.md          discovery report and playback decisions
+TESTING.md               test layers, device script reference, acceptance checklist
+CONTRIBUTING.md          prerequisites, checks, conventions, pull requests
 PLAN.md                  milestones and progress log
 ```
 
-Frigate endpoints in use (verified on 0.16.2): `/api/version`, `/api/config`, `/api/events` (including `in_progress`), `/api/{camera}/recordings`, `/api/{camera}/latest.jpg`, `/api/events/{id}/thumbnail.jpg`, `/api/events/{id}/clip.mp4`, and the HLS VOD playlist `/vod/{camera}/start/{s}/end/{e}/index.m3u8`. Live video is RTSP from go2rtc on port 8554.
+Frigate endpoints in use (verified on 0.16.2): `/api/version`, `/api/config`, `/api/login` (when a profile uses login), `/api/events` (including `in_progress`), `/api/{camera}/recordings`, `/api/{camera}/latest.jpg`, `/api/events/{id}/thumbnail.jpg`, `/api/events/{id}/clip.mp4`, and the HLS VOD playlist `/vod/{camera}/start/{s}/end/{e}/index.m3u8`. Live video is RTSP from go2rtc on port 8554.
 
 ## Design notes
 
