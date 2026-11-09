@@ -6,7 +6,7 @@ import org.junit.Test
 
 class FrigateApiUrlTest {
 
-    private val api = FrigateApi(OkHttpClient())
+    private val api = FrigateApi { OkHttpClient() }
     private val lan = ServerProfile(name = "Home", host = "10.0.0.5", port = 5001, scheme = Scheme.HTTPS)
 
     @Test

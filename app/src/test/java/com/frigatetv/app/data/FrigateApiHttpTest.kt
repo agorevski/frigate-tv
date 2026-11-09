@@ -20,7 +20,7 @@ class FrigateApiHttpTest {
     @Before
     fun setUp() {
         server = MockWebServer().also { it.start() }
-        api = FrigateApi(OkHttpClient())
+        api = FrigateApi { OkHttpClient() }
         profile = ServerProfile(name = "Test", host = server.hostName, port = server.port)
     }
 

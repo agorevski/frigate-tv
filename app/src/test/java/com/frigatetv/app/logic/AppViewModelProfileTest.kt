@@ -203,7 +203,7 @@ class AppViewModelProfileTest {
         launch(home, active = HOME_ID)
         awaitConnected("Home")
 
-        assertEquals("Frigate 0.16.2-4d58206 · 5 cameras", runBlocking { vm.testProfile(qa) }.getOrThrow())
+        assertEquals("Frigate 0.16.2-4d58206 · 5 cameras", runBlocking { vm.testProfile(qa) }.getOrThrow().summary)
         runBlocking { vm.saveProfile(qa, makeActive = true) }.getOrThrow()
 
         awaitConnected("QA-Test-Server")
