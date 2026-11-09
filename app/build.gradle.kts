@@ -47,6 +47,15 @@ android {
         debug {
             isMinifyEnabled = false
         }
+        release {
+            // R8 shrinks and optimizes code (including Compose); unused resources are dropped too.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
+        }
     }
 }
 
@@ -55,6 +64,8 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.activity:activity-compose:1.9.2")
+    // Installs the baseline profiles bundled with Compose/AndroidX so startup and scrolling run AOT-compiled.
+    implementation("androidx.profileinstaller:profileinstaller:1.3.1")
 
     implementation("androidx.media3:media3-exoplayer:1.4.1")
     implementation("androidx.media3:media3-exoplayer-rtsp:1.4.1")

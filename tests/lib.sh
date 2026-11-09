@@ -169,33 +169,37 @@ check_no_crash() {
 
 save_logcat() { tv logcat -d > "$OUT/logcat-${1:-run}.txt"; }
 
-# Tab row (y 118-214) x-positions, verified on the Google TV Streamer.
-TAB_X_LIVE=32
-TAB_X_EVENTS=198
-TAB_X_RECORDINGS=409
-TAB_X_SETTINGS=698
-
-# Moves focus up to the tab row, then left/right to the named tab, and presses OK.
-goto_tab() {
-  local target
+# Tab labels as shown in the top bar.
+tab_label() {
   case "$1" in
-    live) target=$TAB_X_LIVE ;;
-    events) target=$TAB_X_EVENTS ;;
-    recordings) target=$TAB_X_RECORDINGS ;;
-    settings) target=$TAB_X_SETTINGS ;;
-    *) echo "unknown tab $1" >&2; return 1 ;;
+    live) echo "Live" ;;
+    events) echo "Events" ;;
+    recordings) echo "Recordings" ;;
+    settings) echo "Settings" ;;
+    *) return 1 ;;
   esac
-  local i b x
+}
+
+# Moves focus up to the top bar, then left/right to the named tab, and presses OK.
+# Tabs are located by label (first match in tree order is the top bar), so the bar's layout can change freely.
+goto_tab() {
+  local label target ty i b y x tx
+  label="$(tab_label "$1")" || { echo "unknown tab $1" >&2; return 1; }
+  target="$(button_bounds "$label")"
+  [ "$target" = "none" ] && { echo "tab $label not found" >&2; return 1; }
+  ty="$(echo "$target" | sed -E 's/^\[[0-9]+,([0-9]+).*/\1/')"
   for i in $(seq 1 15); do
     b="$(focus_bounds)"
-    case "$b" in *",118]"*) break ;; esac
+    y="$(echo "$b" | sed -E 's/^\[[0-9]+,([0-9]+).*/\1/')"
+    [ "$y" = "$ty" ] && break
     key KEYCODE_DPAD_UP 1
   done
+  tx="$(echo "$target" | sed -E 's/^\[([0-9]+),.*/\1/')"
   for i in $(seq 1 6); do
     b="$(focus_bounds)"
     x="$(echo "$b" | sed -E 's/^\[([0-9]+),.*/\1/')"
-    [ "$x" = "$target" ] && break
-    if [ -n "$x" ] && [ "$x" -lt "$target" ] 2>/dev/null; then key KEYCODE_DPAD_RIGHT 1; else key KEYCODE_DPAD_LEFT 1; fi
+    [ "$x" = "$tx" ] && break
+    if [ -n "$x" ] && [ "$x" -lt "$tx" ] 2>/dev/null; then key KEYCODE_DPAD_RIGHT 1; else key KEYCODE_DPAD_LEFT 1; fi
   done
   key KEYCODE_DPAD_CENTER 2
 }

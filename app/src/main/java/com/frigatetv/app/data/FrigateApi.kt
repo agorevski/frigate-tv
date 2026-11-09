@@ -88,27 +88,38 @@ class FrigateApi {
         conn.inputStream.bufferedReader().use { it.readText() }
     }
 
+    /**
+     * Opens [url], checks the status, and hands the connection to [block], which must read the
+     * response body to the end and close it.
+     *
+     * Connections are kept alive and pooled: a successful, fully read response is not
+     * disconnect()ed, because on Android that closes the socket and every poll or thumbnail would
+     * pay a new TCP handshake. Only failed requests are disconnected. Gzip is negotiated and
+     * decoded transparently by HttpURLConnection as long as no Accept-Encoding header is set here.
+     */
     private fun <T> request(url: String, block: (HttpURLConnection) -> T): T {
         val conn = try {
             (URL(url).openConnection() as HttpURLConnection).apply {
                 connectTimeout = CONNECT_TIMEOUT_MS
                 readTimeout = READ_TIMEOUT_MS
                 requestMethod = "GET"
+                useCaches = false
                 setRequestProperty("Accept", "application/json, image/*, */*")
             }
         } catch (e: IOException) {
             throw FrigateException("Invalid server address")
         }
+        var completed = false
         try {
             val code = conn.responseCode
             if (code !in 200..299) {
                 throw FrigateException("Server returned HTTP $code", code)
             }
-            return block(conn)
+            return block(conn).also { completed = true }
         } catch (e: IOException) {
             throw FrigateException("Cannot reach server (${e.javaClass.simpleName})")
         } finally {
-            conn.disconnect()
+            if (!completed) conn.disconnect()
         }
     }
 

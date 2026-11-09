@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Portrait cold-start background: a flat fill only. A window bitmap is drawn at its native pixel
+    size, which cannot match the Compose splash's centre-crop on every phone; the flat backdrop is
+    the art's own edge colour, so the artwork appears in place without a jump.
+-->
+<color xmlns:android="http://schemas.android.com/apk/res/android" android:color="@color/splash_backdrop" />

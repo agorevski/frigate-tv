@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android 12+ shows the system splash first. Keep it dark so the handoff to the artwork is seamless. -->
+    <style name="Theme.FrigateTV" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@drawable/splash_background</item>
+        <item name="android:colorBackground">@color/splash_ink</item>
+        <item name="android:statusBarColor">@color/splash_ink</item>
+        <item name="android:navigationBarColor">@color/splash_ink</item>
+        <item name="android:windowSplashScreenBackground">@color/splash_backdrop</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@android:color/transparent</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@color/splash_backdrop</item>
+    </style>
+</resources>

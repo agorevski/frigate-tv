@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The window background is the splash artwork. It shows during cold start until Compose draws its first frame. -->
+    <style name="Theme.FrigateTV" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@drawable/splash_background</item>
+        <item name="android:colorBackground">@color/splash_ink</item>
+        <item name="android:statusBarColor">@color/splash_ink</item>
+        <item name="android:navigationBarColor">@color/splash_ink</item>
+    </style>
+</resources>

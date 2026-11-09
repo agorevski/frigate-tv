@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="splash_ink">#FF0B0E12</color>
+    <!-- Edge colour of the splash artwork; fills around it wherever the art does not reach. -->
+    <color name="splash_backdrop">#FF020B15</color>
+    <color name="icon_accent">#FF4FC3F7</color>
+</resources>
