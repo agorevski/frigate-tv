@@ -28,6 +28,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -49,9 +50,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.frigatetv.app.AppViewModel
 import com.frigatetv.app.Connection
+import com.frigatetv.app.player.LocalPlayerPool
+import com.frigatetv.app.player.PlayerPool
+import com.frigatetv.app.ui.events.EventsScreen
+import com.frigatetv.app.ui.live.LiveScreen
+import com.frigatetv.app.ui.recordings.RecordingsScreen
+import kotlinx.coroutines.delay
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
-import kotlinx.coroutines.delay
 
 private enum class Tab(val label: String) {
     LIVE("Live"),
@@ -69,6 +75,15 @@ private val SelectedPill = Accent.copy(alpha = 0.16f)
 
 @Composable
 fun FrigateTvApp(vm: AppViewModel) {
+    // One pool for the whole app: the hardware decoder pool is device-wide, not per screen.
+    val playerPool = remember { PlayerPool() }
+    CompositionLocalProvider(LocalPlayerPool provides playerPool) {
+        FrigateTvContent(vm)
+    }
+}
+
+@Composable
+private fun FrigateTvContent(vm: AppViewModel) {
     val state by vm.state.collectAsState()
     var tab by rememberSaveable { mutableStateOf(Tab.LIVE) }
     val tabRequesters = remember { Tab.entries.associateWith { FocusRequester() } }

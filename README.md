@@ -114,8 +114,15 @@ Each script exits non-zero on failure. Read the `PASS`/`FAIL` lines and the logs
 app/src/main/java/com/frigatetv/app/
   MainActivity.kt        activity; keeps screen on; foreground/background hooks
   AppViewModel.kt        profiles, connection state, health checks, preferences
-  data/                  models, Frigate HTTP client, DataStore persistence
-  ui/                    Compose screens: Live, Events, Recordings, Settings, shell
+  data/                  models, Frigate HTTP client, DataStore persistence;
+                         FrigateRepository is the per-profile entry point for screens
+  player/                ExoPlayer lifecycle: decoder cap (PlayerPool), reconnect
+                         backoff, focus settle; the pure logic has JVM tests
+  ui/                    shared components (focus, images, states), theme, shell,
+                         SettingsScreen
+  ui/live/               Live grid, tiles, fullscreen; LiveViewModel (focus, selection)
+  ui/events/             event list, filters, cards, detail; EventsViewModel
+  ui/recordings/         day timeline, playback; RecordingsViewModel
 tests/                   re-runnable device and API checks
 ARCHITECTURE.md          discovery report and playback decisions
 PLAN.md                  milestones and progress log
