@@ -64,7 +64,8 @@ data class ProfilePrefs(
     val muted: Boolean = false,
 )
 
-class FrigateException(message: String, val statusCode: Int? = null) : Exception(message)
+class FrigateException(message: String, val statusCode: Int? = null, cause: Throwable? = null) :
+    Exception(message, cause)
 
 fun orderedCameras(cameras: List<CameraInfo>, order: List<String>): List<CameraInfo> {
     val rank = order.withIndex().associate { it.value to it.index }

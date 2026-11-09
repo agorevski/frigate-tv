@@ -1,14 +1,10 @@
 package com.frigatetv.app.ui
 
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.util.Log
-import android.util.LruCache
 import android.view.TextureView
 import android.widget.FrameLayout
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
@@ -19,7 +15,6 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -63,14 +58,13 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.asAndroidBitmap
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.painter.ColorPainter
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
@@ -85,21 +79,18 @@ import androidx.media3.common.VideoSize
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.rtsp.RtspMediaSource
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
-import com.frigatetv.app.data.FrigateApi
-import kotlinx.coroutines.Dispatchers
+import coil.compose.AsyncImage
+import coil.request.CachePolicy
+import coil.request.ImageRequest
+import com.frigatetv.app.data.frigateMediaDataSourceFactory
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
-import kotlinx.coroutines.withContext
 
 private const val TAG = "FrigateTV"
 private val CornerShape = RoundedCornerShape(Radius.md)
 private val PillShape = RoundedCornerShape(percent = 50)
-
-/** Shared API instance for image loading (the client is stateless). */
-private val imageApi = FrigateApi()
 
 enum class StreamState(val label: String) {
     Connecting("CONNECTING"),
@@ -488,6 +479,7 @@ fun StreamPlayer(
         firstFrame = false
         val created = ExoPlayer.Builder(context)
             .setLoadControl(if (rtsp) liveLoadControl() else vodLoadControl())
+            .setMediaSourceFactory(DefaultMediaSourceFactory(frigateMediaDataSourceFactory(context)))
             .build().apply {
             addListener(object : Player.Listener {
                 override fun onPlaybackStateChanged(playbackState: Int) {
@@ -630,81 +622,13 @@ fun StreamPlayer(
 private const val MAX_IMAGE_EDGE_PX = 640
 
 /**
- * Process-wide cache of decoded images, sized in bytes: 1/8 of the heap, capped at 32 MB.
- * A 640 px RGB_565 frame is ~0.5 MB, so this holds dozens of thumbnails and snapshots and makes
- * revisiting Events or an offline tile instant. Least recently used entries are dropped first;
- * evicted bitmaps are reclaimed by the GC once no composable still shows them.
- */
-private object ImageCache {
-    private val maxBytes = minOf(Runtime.getRuntime().maxMemory() / 8, 32L * 1024 * 1024).toInt()
-
-    private val cache = object : LruCache<String, ImageBitmap>(maxBytes) {
-        override fun sizeOf(key: String, value: ImageBitmap): Int = value.asAndroidBitmap().allocationByteCount
-    }
-
-    fun key(url: String, maxEdgePx: Int) = "$maxEdgePx|$url"
-    operator fun get(key: String): ImageBitmap? = cache.get(key)
-    operator fun set(key: String, value: ImageBitmap) {
-        cache.put(key, value)
-    }
-}
-
-/**
- * At most four image downloads/decodes at once, so a screen of thumbnails cannot saturate the
- * link (starving live video) or hold many encoded+decoded copies in memory at the same time.
- */
-private val imageLoads = Semaphore(4)
-
-/**
- * Decodes [bytes] at the smallest power-of-two sample size that keeps the longest edge within
- * [maxEdgePx]. Returns null if the data is invalid or the decode runs out of memory.
- */
-private fun decodeScaled(bytes: ByteArray, maxEdgePx: Int = MAX_IMAGE_EDGE_PX): ImageBitmap? = try {
-    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
-    val longest = maxOf(bounds.outWidth, bounds.outHeight)
-    if (longest <= 0) {
-        null
-    } else {
-        var sample = 1
-        while (longest / sample > maxEdgePx) sample *= 2
-        // Frigate serves JPEG (no alpha), so RGB_565 halves memory without visible loss.
-        val options = BitmapFactory.Options().apply {
-            inSampleSize = sample
-            inPreferredConfig = Bitmap.Config.RGB_565
-        }
-        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)?.asImageBitmap()
-    }
-} catch (e: OutOfMemoryError) {
-    Log.w(TAG, "image decode out of memory; showing placeholder")
-    null
-}
-
-/** Fetches and decodes [url] off the main thread, stores it in the cache, and returns it (null on failure). */
-private suspend fun loadImage(url: String, maxEdgePx: Int): ImageBitmap? = withContext(Dispatchers.IO) {
-    imageLoads.withPermit {
-        val bytes = runCatching { imageApi.getBytes(url) }.getOrNull() ?: return@withPermit null
-        decodeScaled(bytes, maxEdgePx)
-    }?.also { ImageCache[ImageCache.key(url, maxEdgePx)] = it }
-}
-
-/**
- * Warms the image cache for [url] (e.g. the next page of event thumbnails) so a later
- * [RemoteImage] with the same url and [maxEdgePx] shows it immediately. No-op if already cached.
- */
-suspend fun preloadImage(url: String, maxEdgePx: Int = MAX_IMAGE_EDGE_PX) {
-    if (ImageCache[ImageCache.key(url, maxEdgePx)] == null) loadImage(url, maxEdgePx)
-}
-
-/**
- * Shows an image fetched from [url]. With [refreshMs] set it re-fetches periodically
- * (used for offline camera snapshots); with null it loads once (event thumbnails).
+ * Shows an image fetched from [url] through Coil, whose loader ([frigateImageLoader]) runs on the
+ * shared HTTP client and has memory and disk caches.
  *
- * Decoded images go through a shared in-memory LRU cache, so an image seen before appears on
- * the first frame with no placeholder. A one-shot image that is cached is not re-fetched; a
- * refreshing one shows the cached copy at once and fetches a fresh one in the background. While a
- * refresh is in flight the previous bitmap stays on screen, so it never flashes blank. An image
- * that was not cached fades in once over [Motion.EnterMs] (graphics layer alpha only).
+ * With [refreshMs] set it re-fetches periodically (offline camera snapshots). Those requests skip
+ * both caches, so a snapshot is never stale, and the previous frame stays on screen as the
+ * placeholder until the new one arrives, so a refresh never flashes blank. With null it loads once
+ * and is cached (event thumbnails), fading in over [Motion.EnterMs].
  *
  * [maxEdgePx] caps the decoded size; pass a smaller value for small tiles to save memory.
  * Until an image is available a [Panel] placeholder fills [modifier].
@@ -717,37 +641,41 @@ fun RemoteImage(
     contentScale: ContentScale = ContentScale.Crop,
     maxEdgePx: Int = MAX_IMAGE_EDGE_PX,
 ) {
-    val key = ImageCache.key(url, maxEdgePx)
-    val cached = remember(key) { ImageCache[key] }
-    // Tagged with its key: produceState keeps its value across key changes, and an image must
-    // never be shown under a different url, even for the one frame before the producer restarts.
-    val produced by produceState<Pair<String, ImageBitmap>?>(null, key, refreshMs) {
-        if (cached != null && refreshMs == null) return@produceState
+    val context = LocalContext.current
+    val panel = remember { ColorPainter(Panel) }
+    // Advances once per refresh. Each tick builds a new request, which makes Coil fetch again.
+    var tick by remember(url, refreshMs) { mutableIntStateOf(0) }
+    LaunchedEffect(url, refreshMs) {
+        if (refreshMs == null) return@LaunchedEffect
         while (true) {
-            loadImage(url, maxEdgePx)?.let { value = key to it }
-            if (refreshMs == null) break
             delay(refreshMs)
+            tick++
         }
     }
-    val bitmap = produced?.takeIf { it.first == key }?.second ?: cached
-    // Images already in the cache start fully opaque; new ones fade in once.
-    val alpha = remember(key) { Animatable(if (cached != null) 1f else 0f) }
-    val loaded = bitmap
-    if (loaded != null) {
-        LaunchedEffect(alpha) {
-            if (alpha.value < 1f) alpha.animateTo(1f, tween(Motion.EnterMs))
-        }
-        Image(
-            bitmap = loaded,
-            contentDescription = null,
-            modifier = modifier
-                .drawBehind { if (alpha.value < 1f) drawRect(Panel) }
-                .graphicsLayer { this.alpha = alpha.value },
-            contentScale = contentScale,
-        )
-    } else {
-        Box(modifier.background(Panel))
+    var lastFrame by remember(url) { mutableStateOf<Painter?>(null) }
+    val request = remember(url, maxEdgePx, refreshMs, tick) {
+        ImageRequest.Builder(context)
+            .data(url)
+            .size(maxEdgePx)
+            .apply {
+                if (refreshMs != null) {
+                    memoryCachePolicy(CachePolicy.DISABLED)
+                    diskCachePolicy(CachePolicy.DISABLED)
+                } else {
+                    crossfade(Motion.EnterMs)
+                }
+            }
+            .build()
     }
+    AsyncImage(
+        model = request,
+        contentDescription = null,
+        modifier = modifier,
+        contentScale = contentScale,
+        placeholder = lastFrame ?: panel,
+        error = panel,
+        onSuccess = { lastFrame = it.painter },
+    )
 }
 
 /** Subtle dark overlay used to dim content behind text. */

@@ -35,7 +35,8 @@ fi
 
 PKG=com.frigatetv.app
 ACTIVITY=$PKG/.MainActivity
-S="${TV_ADB_SERIAL:?TV_ADB_SERIAL is not set in .env}"
+# ADB_SERIAL (from the environment) overrides the .env device, e.g. to run against a phone.
+S="${ADB_SERIAL:-${TV_ADB_SERIAL:?TV_ADB_SERIAL is not set in .env}}"
 OUT="${TEST_OUT:-$TESTS_DIR/out/$(date +%Y%m%d-%H%M%S)}"
 mkdir -p "$OUT"
 PASS=0

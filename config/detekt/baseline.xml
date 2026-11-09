@@ -31,8 +31,6 @@
     <ID>MagicNumber:EventsScreen.kt$TimeRange.DAY$86_400L</ID>
     <ID>MagicNumber:EventsScreen.kt$TimeRange.MONTH$2_592_000L</ID>
     <ID>MagicNumber:EventsScreen.kt$TimeRange.WEEK$604_800L</ID>
-    <ID>MagicNumber:FrigateApi.kt$FrigateApi$200</ID>
-    <ID>MagicNumber:FrigateApi.kt$FrigateApi$299</ID>
     <ID>MagicNumber:LiveScreen.kt$0.66f</ID>
     <ID>MagicNumber:LiveScreen.kt$0.6f</ID>
     <ID>MagicNumber:LiveScreen.kt$16f</ID>
@@ -69,10 +67,6 @@
     <ID>SpacingBetweenDeclarationsWithComments:LiveScreen.kt$/** Gap between rail tiles. Wider than the 4% focus scale-up so a focused tile never overlaps its neighbours. */</ID>
     <ID>SpacingBetweenDeclarationsWithComments:LiveScreen.kt$/** Selecting a camera switches it to the main stream only after focus rests this long. */</ID>
     <ID>SpacingBetweenDeclarationsWithComments:LiveScreen.kt$/** Space reserved under the featured video for its caption. */</ID>
-    <ID>SwallowedException:Components.kt$e: OutOfMemoryError</ID>
-    <ID>SwallowedException:FrigateApi.kt$FrigateApi$e: IOException</ID>
-    <ID>SwallowedException:FrigateApi.kt$FrigateApi$e: JSONException</ID>
-    <ID>ThrowsCount:FrigateApi.kt$FrigateApi$private fun &lt;T&gt; request(url: String, block: (HttpURLConnection) -&gt; T): T</ID>
     <ID>TooGenericExceptionCaught:AppViewModel.kt$AppViewModel$e: Exception</ID>
     <ID>TooManyFunctions:AppViewModel.kt$AppViewModel : AndroidViewModel</ID>
     <ID>TooManyFunctions:Components.kt$com.frigatetv.app.ui.Components.kt</ID>

@@ -131,6 +131,7 @@ Frigate endpoints in use (verified on 0.16.2): `/api/version`, `/api/config`, `/
 - Connectivity changes trigger an immediate retry. The app also runs a server health check about every 32 s.
 - Profiles are validated with a connection test before activation. A failed test keeps the current profile.
 - Cleartext HTTP is enabled app-wide for the LAN Frigate server; tighten this before any release.
+- Networking: one OkHttp client (`data/FrigateHttp.kt`, 5 s connect, 10 s read) serves the API, Coil image loads and Media3 HLS/MP4 playback, so they share keep-alive connections. JSON is decoded with kotlinx.serialization (`data/FrigateDto.kt`). Live snapshots are never cached; event thumbnails are cached in memory and on disk.
 
 ## Not yet done
 

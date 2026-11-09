@@ -2,19 +2,23 @@ package com.frigatetv.app.data
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.json.JSONArray
-import org.json.JSONException
-import org.json.JSONObject
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.decodeFromJsonElement
+import okhttp3.Call
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import java.io.IOException
-import java.net.HttpURLConnection
-import java.net.URL
 import java.net.URLEncoder
 
 /**
  * Stateless client for the Frigate HTTP API (verified against Frigate 0.16.2).
  * Every call runs on Dispatchers.IO and throws [FrigateException] on failure.
+ *
+ * [client] is normally [FrigateHttp.client]. A per-profile client (for example one with auth) can be passed instead.
  */
-class FrigateApi {
+class FrigateApi(private val client: OkHttpClient = FrigateHttp.client) {
 
     suspend fun version(profile: ServerProfile): String = withContext(Dispatchers.IO) {
         get("${profile.baseUrl}/api/version").trim().ifEmpty {
@@ -23,7 +27,7 @@ class FrigateApi {
     }
 
     suspend fun cameras(profile: ServerProfile): List<CameraInfo> = withContext(Dispatchers.IO) {
-        parse { parseCameras(JSONObject(get("${profile.baseUrl}/api/config"))) }
+        parse { parseCameras(get("${profile.baseUrl}/api/config")) }
     }
 
     suspend fun events(
@@ -40,8 +44,8 @@ class FrigateApi {
             if (inProgress) append("&in_progress=1")
         }
         parse {
-            val arr = JSONArray(get("${profile.baseUrl}/api/events?$query"))
-            List(arr.length()) { parseEvent(arr.getJSONObject(it)) }
+            frigateJson.decodeFromString<List<EventDto>>(get("${profile.baseUrl}/api/events?$query"))
+                .map { it.toDomain() }
         }
     }
 
@@ -54,18 +58,11 @@ class FrigateApi {
         parse {
             val url = "${profile.baseUrl}/api/${encode(camera)}/recordings" +
                 "?after=${after.toLong()}&before=${before.toLong()}"
-            val arr = JSONArray(get(url))
-            (0 until arr.length()).mapNotNull { i ->
-                val o = arr.getJSONObject(i)
-                val end = o.optDoubleOrNull("end_time") ?: return@mapNotNull null
-                RecordingSegment(o.getDouble("start_time"), end)
+            frigateJson.decodeFromString<List<RecordingDto>>(get(url)).mapNotNull { r ->
+                val end = r.endTime ?: return@mapNotNull null
+                RecordingSegment(r.startTime ?: throw SerializationException("recording without start_time"), end)
             }
         }
-    }
-
-    /** Raw bytes for images (snapshots and thumbnails). */
-    suspend fun getBytes(url: String): ByteArray = withContext(Dispatchers.IO) {
-        request(url) { conn -> conn.inputStream.use { it.readBytes() } }
     }
 
     fun cameraSnapshotUrl(profile: ServerProfile, camera: String): String =
@@ -84,107 +81,86 @@ class FrigateApi {
     fun vodUrl(profile: ServerProfile, camera: String, startEpoch: Double, endEpoch: Double): String =
         "${profile.baseUrl}/vod/${encode(camera)}/start/${startEpoch.toLong()}/end/${endEpoch.toLong()}/index.m3u8"
 
-    private fun get(url: String): String = request(url) { conn ->
-        conn.inputStream.bufferedReader().use { it.readText() }
+    /**
+     * Sends a GET to [url] and returns the body as text. Non-2xx responses and network failures
+     * become [FrigateException]s.
+     *
+     * OkHttp keeps connections alive and pools them, so each poll or thumbnail reuses a socket.
+     */
+    private fun get(url: String): String {
+        val call = buildCall(url)
+        try {
+            return call.execute().use { response ->
+                if (!response.isSuccessful) {
+                    throw FrigateException("Server returned HTTP ${response.code}", response.code)
+                }
+                response.body?.string().orEmpty()
+            }
+        } catch (e: IOException) {
+            throw FrigateException("Cannot reach server (${e.javaClass.simpleName})", cause = e)
+        }
     }
 
-    /**
-     * Opens [url], checks the status, and hands the connection to [block], which must read the
-     * response body to the end and close it.
-     *
-     * Connections are kept alive and pooled: a successful, fully read response is not
-     * disconnect()ed, because on Android that closes the socket and every poll or thumbnail would
-     * pay a new TCP handshake. Only failed requests are disconnected. Gzip is negotiated and
-     * decoded transparently by HttpURLConnection as long as no Accept-Encoding header is set here.
-     */
-    private fun <T> request(url: String, block: (HttpURLConnection) -> T): T {
-        val conn = try {
-            (URL(url).openConnection() as HttpURLConnection).apply {
-                connectTimeout = CONNECT_TIMEOUT_MS
-                readTimeout = READ_TIMEOUT_MS
-                requestMethod = "GET"
-                useCaches = false
-                setRequestProperty("Accept", "application/json, image/*, */*")
-            }
-        } catch (e: IOException) {
-            throw FrigateException("Invalid server address")
-        }
-        var completed = false
-        try {
-            val code = conn.responseCode
-            if (code !in 200..299) {
-                throw FrigateException("Server returned HTTP $code", code)
-            }
-            return block(conn).also { completed = true }
-        } catch (e: IOException) {
-            throw FrigateException("Cannot reach server (${e.javaClass.simpleName})")
-        } finally {
-            if (!completed) conn.disconnect()
-        }
+    /** No Accept-Encoding header is set, so OkHttp negotiates gzip and decodes it transparently. */
+    private fun buildCall(url: String): Call = try {
+        client.newCall(Request.Builder().url(url).header("Accept", "application/json, image/*, */*").build())
+    } catch (e: IllegalArgumentException) {
+        throw FrigateException("Invalid server address", cause = e)
     }
 
     private inline fun <T> parse(block: () -> T): T = try {
         block()
-    } catch (e: JSONException) {
-        throw FrigateException("Unexpected response from server")
+    } catch (e: SerializationException) {
+        throw FrigateException("Unexpected response from server", cause = e)
     }
 
     private fun encode(value: String): String = URLEncoder.encode(value, "UTF-8")
 
     companion object {
-        private const val CONNECT_TIMEOUT_MS = 5_000
-        private const val READ_TIMEOUT_MS = 10_000
         private val RTSP_PATH = Regex("""rtsp://[^/]+/([^?\s]+)""")
 
-        internal fun parseCameras(config: JSONObject): List<CameraInfo> {
-            val cams = config.getJSONObject("cameras")
-            return cams.keys().asSequence().map { name ->
-                val cam = cams.getJSONObject(name)
-                val inputs = cam.optJSONObject("ffmpeg")?.optJSONArray("inputs") ?: JSONArray()
+        /** Camera ids keep the document order of `cameras` in the config. */
+        internal fun parseCameras(config: String): List<CameraInfo> =
+            parseCameras(frigateJson.parseToJsonElement(config))
+
+        internal fun parseCameras(config: JsonElement): List<CameraInfo> =
+            frigateJson.decodeFromJsonElement<ConfigDto>(config).cameras.map { (name, cam) ->
                 var detect: String? = null
                 var record: String? = null
-                for (i in 0 until inputs.length()) {
-                    val input = inputs.getJSONObject(i)
-                    val stream = RTSP_PATH.find(input.getString("path"))?.groupValues?.get(1) ?: continue
-                    val roles = input.optJSONArray("roles") ?: JSONArray()
-                    for (r in 0 until roles.length()) {
-                        when (roles.getString(r)) {
+                for (input in cam.ffmpeg?.inputs.orEmpty()) {
+                    val stream = RTSP_PATH.find(input.path)?.groupValues?.get(1) ?: continue
+                    for (role in input.roles) {
+                        when (role) {
                             "detect" -> detect = stream
                             "record" -> record = stream
                         }
                     }
                 }
-                val detectCfg = cam.optJSONObject("detect")
                 CameraInfo(
                     id = name,
-                    enabled = cam.optBoolean("enabled", true),
+                    enabled = cam.enabled,
                     detectStream = detect,
                     recordStream = record,
-                    detectWidth = detectCfg?.optInt("width", 0)?.takeIf { it > 0 },
-                    detectHeight = detectCfg?.optInt("height", 0)?.takeIf { it > 0 },
+                    detectWidth = cam.detect?.width?.takeIf { it > 0 },
+                    detectHeight = cam.detect?.height?.takeIf { it > 0 },
                 )
-            }.toList()
-        }
+            }
 
-        internal fun parseEvent(o: JSONObject): FrigateEvent {
-            val data = o.optJSONObject("data")
-            return FrigateEvent(
-                id = o.getString("id"),
-                camera = o.getString("camera"),
-                label = o.getString("label"),
-                subLabel = o.optStringOrNull("sub_label"),
-                startTime = o.getDouble("start_time"),
-                endTime = o.optDoubleOrNull("end_time"),
-                hasClip = o.optBoolean("has_clip", false),
-                hasSnapshot = o.optBoolean("has_snapshot", false),
-                score = data?.optDoubleOrNull("top_score") ?: data?.optDoubleOrNull("score"),
-            )
-        }
+        internal fun parseEvent(o: String): FrigateEvent = parseEvent(frigateJson.parseToJsonElement(o))
 
-        private fun JSONObject.optStringOrNull(key: String): String? =
-            if (!has(key) || isNull(key)) null else optString(key).takeIf { it.isNotBlank() }
-
-        private fun JSONObject.optDoubleOrNull(key: String): Double? =
-            if (!has(key) || isNull(key)) null else optDouble(key).takeIf { !it.isNaN() }
+        internal fun parseEvent(o: JsonElement): FrigateEvent =
+            frigateJson.decodeFromJsonElement<EventDto>(o).toDomain()
     }
 }
+
+private fun EventDto.toDomain(): FrigateEvent = FrigateEvent(
+    id = id,
+    camera = camera,
+    label = label,
+    subLabel = subLabel?.takeIf { it.isNotBlank() },
+    startTime = startTime,
+    endTime = endTime,
+    hasClip = hasClip,
+    hasSnapshot = hasSnapshot,
+    score = data?.topScore ?: data?.score,
+)

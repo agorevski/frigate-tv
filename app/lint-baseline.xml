@@ -356,7 +356,7 @@
         errorLine2="                               ~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/com/frigatetv/app/ui/Components.kt"
-            line="424"
+            line="415"
             column="32"/>
     </issue>
 
@@ -367,7 +367,7 @@
         errorLine2="                                                                       ~~~~~~~">
         <location
             file="src/main/java/com/frigatetv/app/ui/Components.kt"
-            line="424"
+            line="415"
             column="72"/>
     </issue>
 
@@ -378,7 +378,7 @@
         errorLine2="     ~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/com/frigatetv/app/ui/Components.kt"
-            line="425"
+            line="416"
             column="6"/>
     </issue>
 
@@ -389,7 +389,7 @@
         errorLine2="     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/com/frigatetv/app/ui/Components.kt"
-            line="426"
+            line="417"
             column="6"/>
     </issue>
 
@@ -400,7 +400,7 @@
         errorLine2="     ~~~~~">
         <location
             file="src/main/java/com/frigatetv/app/ui/Components.kt"
-            line="427"
+            line="418"
             column="6"/>
     </issue>
 
@@ -411,7 +411,7 @@
         errorLine2="                              ~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/com/frigatetv/app/ui/Components.kt"
-            line="433"
+            line="424"
             column="31"/>
     </issue>
 
@@ -422,7 +422,7 @@
         errorLine2="                                                                      ~~~~~~~">
         <location
             file="src/main/java/com/frigatetv/app/ui/Components.kt"
-            line="433"
+            line="424"
             column="71"/>
     </issue>
 
@@ -433,7 +433,7 @@
         errorLine2="     ~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/com/frigatetv/app/ui/Components.kt"
-            line="434"
+            line="425"
             column="6"/>
     </issue>
 
@@ -444,7 +444,7 @@
         errorLine2="                           ~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/com/frigatetv/app/ui/Components.kt"
-            line="435"
+            line="426"
             column="28"/>
     </issue>
 
@@ -455,7 +455,7 @@
         errorLine2="                           ~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/com/frigatetv/app/ui/Components.kt"
-            line="436"
+            line="427"
             column="28"/>
     </issue>
 
@@ -466,7 +466,7 @@
         errorLine2="     ~~~~~">
         <location
             file="src/main/java/com/frigatetv/app/ui/Components.kt"
-            line="440"
+            line="431"
             column="6"/>
     </issue>
 
@@ -477,8 +477,19 @@
         errorLine2="             ~~~~~~~~~~~~~~">
         <location
             file="src/main/java/com/frigatetv/app/ui/Components.kt"
-            line="490"
+            line="481"
             column="14"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="            .setMediaSourceFactory(DefaultMediaSourceFactory(frigateMediaDataSourceFactory(context)))"
+        errorLine2="                                   ~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/frigatetv/app/ui/Components.kt"
+            line="482"
+            column="36"/>
     </issue>
 
     <issue
@@ -488,7 +499,7 @@
         errorLine2="                        ~~~~~">
         <location
             file="src/main/java/com/frigatetv/app/ui/Components.kt"
-            line="518"
+            line="510"
             column="25"/>
     </issue>
 
@@ -499,7 +510,7 @@
         errorLine2="                              ~~~~~~~~~~~~~~">
         <location
             file="src/main/java/com/frigatetv/app/ui/Components.kt"
-            line="520"
+            line="512"
             column="31"/>
     </issue>
 
@@ -510,7 +521,7 @@
         errorLine2="                ~~~~~~~~~~~~~~">
         <location
             file="src/main/java/com/frigatetv/app/ui/Components.kt"
-            line="534"
+            line="526"
             column="17"/>
     </issue>
 
@@ -521,7 +532,7 @@
         errorLine2="                                               ~~~~~~~">
         <location
             file="src/main/java/com/frigatetv/app/ui/Components.kt"
-            line="534"
+            line="526"
             column="48"/>
     </issue>
 
@@ -532,7 +543,7 @@
         errorLine2="                                                         ~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/com/frigatetv/app/ui/Components.kt"
-            line="534"
+            line="526"
             column="58"/>
     </issue>
 
@@ -543,7 +554,7 @@
         errorLine2="                                                                                 ~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/com/frigatetv/app/ui/Components.kt"
-            line="534"
+            line="526"
             column="82"/>
     </issue>
 
@@ -554,7 +565,7 @@
         errorLine2="                        ~~~~~~~~~~">
         <location
             file="src/main/java/com/frigatetv/app/ui/Components.kt"
-            line="587"
+            line="579"
             column="25"/>
     </issue>
 
@@ -565,7 +576,7 @@
         errorLine2="                        ~~~~~~~~~~">
         <location
             file="src/main/java/com/frigatetv/app/ui/Components.kt"
-            line="587"
+            line="579"
             column="25"/>
     </issue>
 
@@ -576,7 +587,7 @@
         errorLine2="                                                            ~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/com/frigatetv/app/ui/Components.kt"
-            line="587"
+            line="579"
             column="61"/>
     </issue>
 
@@ -587,7 +598,7 @@
         errorLine2="                    ~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/com/frigatetv/app/ui/Components.kt"
-            line="601"
+            line="593"
             column="21"/>
     </issue>
 
@@ -598,7 +609,7 @@
         errorLine2="                        ~~~~~~~~~~">
         <location
             file="src/main/java/com/frigatetv/app/ui/Components.kt"
-            line="602"
+            line="594"
             column="25"/>
     </issue>
 
@@ -609,7 +620,7 @@
         errorLine2="                        ~~~~~~~~~~">
         <location
             file="src/main/java/com/frigatetv/app/ui/Components.kt"
-            line="602"
+            line="594"
             column="25"/>
     </issue>
 
@@ -620,7 +631,7 @@
         errorLine2="                                                            ~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/com/frigatetv/app/ui/Components.kt"
-            line="602"
+            line="594"
             column="61"/>
     </issue>
 
@@ -631,19 +642,8 @@
         errorLine2="                           ~">
         <location
             file="src/main/java/com/frigatetv/app/ui/Components.kt"
-            line="613"
+            line="605"
             column="28"/>
-    </issue>
-
-    <issue
-        id="ProduceStateDoesNotAssignValue"
-        message="produceState calls should assign `value` inside the producer lambda"
-        errorLine1="    val produced by produceState&lt;Pair&lt;String, ImageBitmap>?>(null, key, refreshMs) {"
-        errorLine2="                    ~~~~~~~~~~~~">
-        <location
-            file="src/main/java/com/frigatetv/app/ui/Components.kt"
-            line="724"
-            column="21"/>
     </issue>
 
     <issue
