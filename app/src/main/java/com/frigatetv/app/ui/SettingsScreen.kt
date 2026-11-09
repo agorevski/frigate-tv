@@ -26,6 +26,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -211,21 +212,36 @@ private fun SettingsGroup(
 @Composable
 private fun RowDivider() = HorizontalDivider(color = PanelHi)
 
-/** A labelled row of segmented pills; exactly one pill is selected. */
+/** A labelled row of segmented pills; exactly one pill is selected. Narrow screens put the label above the pills. */
 @Composable
 private fun OptionRow(label: String, content: @Composable RowScope.() -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().heightIn(min = RowMinHeight),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Space.xs),
-    ) {
-        Text(
-            label,
-            color = TextSecondary,
-            style = MaterialTheme.typography.bodyLarge,
-            modifier = Modifier.width(OptionLabelWidth),
+    val compact = LocalConfiguration.current.screenWidthDp < COMPACT_WIDTH_DP
+    val labelText: @Composable (Modifier) -> Unit = { m ->
+        Text(label, color = TextSecondary, style = MaterialTheme.typography.bodyLarge, modifier = m)
+    }
+    // Pills scroll sideways rather than wrapping their labels when space runs out.
+    val pills: @Composable (Modifier) -> Unit = { m ->
+        Row(
+            m.horizontalScroll(rememberScrollState()),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Space.xs),
+            content = content,
         )
-        content()
+    }
+    if (compact) {
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Space.xs)) {
+            labelText(Modifier)
+            pills(Modifier.fillMaxWidth())
+        }
+    } else {
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = RowMinHeight),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Space.xs),
+        ) {
+            labelText(Modifier.width(OptionLabelWidth))
+            pills(Modifier.weight(1f))
+        }
     }
 }
 

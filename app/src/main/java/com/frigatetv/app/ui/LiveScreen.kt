@@ -9,8 +9,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -22,8 +20,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -526,8 +526,10 @@ private fun FeaturedCaption(camId: String, isFavorite: Boolean, muted: Boolean) 
                 maxLines = 1,
             )
         }
-        Spacer(Modifier.width(Space.md))
-        KeyHint("OK", "Fullscreen")
+        if (isTelevision()) {
+            Spacer(Modifier.width(Space.md))
+            KeyHint("OK", "Fullscreen")
+        }
     }
 }
 
@@ -734,9 +736,13 @@ private fun FullscreenView(
                 horizontalArrangement = Arrangement.spacedBy(Space.xl, Alignment.CenterHorizontally),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                KeyHint("◀ ▶", "Switch camera")
-                KeyHint("OK", "Hide controls")
-                KeyHint("BACK", "Grid")
+                if (isTelevision()) {
+                    KeyHint("◀ ▶", "Switch camera")
+                    KeyHint("OK", "Hide controls")
+                    KeyHint("BACK", "Grid")
+                } else {
+                    Text("Tap to hide controls · Back returns to the grid", color = TextSecondary, style = MaterialTheme.typography.bodyMedium)
+                }
             }
         }
     }

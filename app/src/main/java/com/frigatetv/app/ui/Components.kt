@@ -754,3 +754,11 @@ fun RemoteImage(
 fun Modifier.scrim(alpha: Float = 0.55f): Modifier = drawBehind {
     drawRect(Color.Black.copy(alpha = alpha))
 }
+
+/** True on Android TV / Google TV, where remote-key hints apply; false on touch devices. */
+@Composable
+fun isTelevision(): Boolean {
+    val uiMode = androidx.compose.ui.platform.LocalConfiguration.current.uiMode
+    return uiMode and android.content.res.Configuration.UI_MODE_TYPE_MASK ==
+        android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
+}

@@ -1,14 +1,43 @@
 package com.frigatetv.app.ui
 
 import androidx.activity.compose.BackHandler
+import android.view.View
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
+import kotlin.math.abs
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -27,6 +56,7 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -58,14 +88,14 @@ import com.frigatetv.app.data.FrigateEvent
 import com.frigatetv.app.data.ServerProfile
 import com.frigatetv.app.data.displayName
 import com.frigatetv.app.data.orderedCameras
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlin.math.roundToInt
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 private enum class LabelFilter(val title: String) {
     ALL("All"),
@@ -75,9 +105,9 @@ private enum class LabelFilter(val title: String) {
 }
 
 private enum class TimeRange(val title: String, val chip: String, val seconds: Long) {
-    DAY("Last 24 hours", "24 hours", 86_400L),
-    WEEK("Last 7 days", "7 days", 604_800L),
-    MONTH("Last 30 days", "30 days", 2_592_000L),
+    DAY("Last 24 hours", "24h", 86_400L),
+    WEEK("Last 7 days", "7d", 604_800L),
+    MONTH("Last 30 days", "30d", 2_592_000L),
 }
 
 private val VEHICLE_LABELS = setOf("car", "truck", "motorcycle", "bus", "bicycle")
@@ -173,6 +203,7 @@ private fun buildRows(events: List<EventUi>, label: LabelFilter): List<GridRow> 
     return rows
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun EventsScreen(state: AppState) {
     val profile = state.active ?: return
@@ -188,9 +219,6 @@ fun EventsScreen(state: AppState) {
     val gridState = rememberLazyGridState()
     var openedId by rememberSaveable { mutableStateOf<String?>(null) }
     val returnFocus = remember { FocusRequester() }
-    LaunchedEffect(selected) {
-        if (selected == null) runCatching { returnFocus.requestFocus() }
-    }
 
     val result by produceState<Result<List<EventUi>>?>(null, profile, range, cameraId) {
         val now = System.currentTimeMillis() / 1000.0
@@ -203,35 +231,85 @@ fun EventsScreen(state: AppState) {
         }
     }
 
-    val current = selected
-    if (current != null) {
-        BackHandler { selected = null }
-        EventDetail(profile, current, muted = state.prefs.muted)
-        return
-    }
-
     val loaded = result
     val events = loaded?.getOrNull()
     val rows = remember(events, label) { events?.let { buildRows(it, label) }.orEmpty() }
-    val count = remember(rows) { rows.count { it is CardRow } }
+    // The filtered events in grid order (newest first); the detail view pages through these.
+    val cards = remember(rows) { rows.mapNotNull { (it as? CardRow)?.ui } }
+    val count = cards.size
+
+    // Back on the list: bring the card of the event last shown into view and focus it, even if
+    // the detail view paged to an event that was never on screen.
+    LaunchedEffect(selected) {
+        if (selected != null) return@LaunchedEffect
+        val id = openedId
+        val rowIndex = if (id == null) -1 else rows.indexOfFirst { it is CardRow && it.ui.id == id }
+        if (rowIndex >= 0) {
+            withFrameNanos {}
+            val layout = gridState.layoutInfo
+            val shown = layout.visibleItemsInfo.firstOrNull { it.index == rowIndex }
+            val fullyVisible = shown != null && shown.offset.y >= layout.viewportStartOffset &&
+                shown.offset.y + shown.size.height <= layout.viewportEndOffset
+            if (!fullyVisible) {
+                // Keep the day header above the card in view when there is one.
+                val target = if (rowIndex > 0 && rows[rowIndex - 1] is DayRow) rowIndex - 1 else rowIndex
+                gridState.scrollToItem(target)
+            }
+            withTimeoutOrNull(1_000) {
+                snapshotFlow { gridState.layoutInfo.visibleItemsInfo.any { it.key == id } }.first { it }
+            }
+            withFrameNanos {}
+        }
+        runCatching { returnFocus.requestFocus() }
+    }
+
+    val current = selected
+    if (current != null) {
+        // Track the open event by id so a refreshed list keeps it; if it disappeared, stay on it.
+        val index = cards.indexOfFirst { it.id == current.id }
+        BackHandler { selected = null }
+        EventDetail(
+            profile,
+            if (index >= 0) cards[index] else current,
+            muted = state.prefs.muted,
+            position = index,
+            total = cards.size,
+            onStep = { step ->
+                val next = if (index >= 0) cards.getOrNull(index + step) else null
+                if (next != null) {
+                    selected = next
+                    openedId = next.id
+                }
+                next != null
+            },
+        )
+        return
+    }
 
     Column(Modifier.fillMaxSize().padding(horizontal = Space.lg, vertical = Space.md)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            FilterGroup("Type") {
-                LabelFilter.entries.forEach { f ->
-                    FilterChip(f.title, selected = label == f) { label = f }
-                }
+        val typeChips: @Composable RowScope.() -> Unit = {
+            LabelFilter.entries.forEach { f ->
+                FilterChip(f.title, selected = label == f) { label = f }
             }
-            Spacer(Modifier.weight(1f))
-            FilterGroup("Range") {
-                TimeRange.entries.forEach { r ->
-                    FilterChip(r.chip, selected = range == r) { range = r }
-                }
+        }
+        val rangeChips: @Composable RowScope.() -> Unit = {
+            TimeRange.entries.forEach { r ->
+                FilterChip(r.chip, selected = range == r) { range = r }
             }
+        }
+        // Groups sit side by side when they fit (Range pushed to the end) and wrap onto their own line on
+        // narrow phones. Each group also scrolls horizontally, so a chip is never squeezed or clipped.
+        FlowRow(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalArrangement = Arrangement.spacedBy(Space.xs),
+        ) {
+            FilterGroup("Type", Modifier.horizontalScroll(rememberScrollState()), typeChips)
+            FilterGroup("Range", Modifier.horizontalScroll(rememberScrollState()), rangeChips)
         }
         Spacer(Modifier.height(Space.xs))
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            FilterGroup("Camera", Modifier.weight(1f)) {
+            FilterGroup("Camera", Modifier.weight(1f).horizontalScroll(rememberScrollState())) {
                 FilterChip("All", selected = cameraId == null) { cameraId = null }
                 cameras.forEach { cam ->
                     FilterChip(displayName(cam.id), selected = cameraId == cam.id) { cameraId = cam.id }
@@ -244,6 +322,7 @@ fun EventsScreen(state: AppState) {
                     color = TextSecondary,
                     style = MaterialTheme.typography.titleMedium.merge(NumericStyle),
                     maxLines = 1,
+                    softWrap = false,
                 )
             }
         }
@@ -318,6 +397,8 @@ private fun FilterGroup(title: String, modifier: Modifier = Modifier, content: @
             title,
             color = TextSecondary,
             style = MaterialTheme.typography.labelMedium,
+            maxLines = 1,
+            softWrap = false,
             modifier = Modifier.padding(end = Space.xxs),
         )
         content()
@@ -334,13 +415,15 @@ private fun FilterChip(text: String, selected: Boolean, onClick: () -> Unit) {
         background = if (selected) Accent else PanelHi,
         shape = ChipShape,
         contentPadding = PaddingValues(horizontal = Space.sm, vertical = 6.dp),
-        modifier = Modifier.heightIn(min = 40.dp),
+        // Hug the label: never stretched or squeezed by the parent row.
+        modifier = Modifier.width(IntrinsicSize.Max).heightIn(min = 40.dp),
     ) { _ ->
         Text(
             text,
             color = if (selected) Ink else TextPrimary,
             style = MaterialTheme.typography.bodyMedium,
             maxLines = 1,
+            softWrap = false,
         )
     }
 }
@@ -452,14 +535,41 @@ private fun EventCard(
     }
 }
 
+/** Horizontal travel (as a fraction of the width) that the next event slides in from. */
+private const val SLIDE_FRACTION = 0.3f
+
+/** Drag resistance past the first or last event: the content gives a little, then springs back. */
+private const val EDGE_RESISTANCE = 0.25f
+
+/** Delay before a paged-to clip starts decoding, so flicking through events never stacks decoders. */
+private const val PLAYER_SETTLE_MS = 300L
+
+/**
+ * One event full screen. A horizontal swipe (phone) or D-pad LEFT/RIGHT (TV, while the player
+ * controls are not focused) calls [onStep] with +1 for the next event in grid order and -1 for the
+ * previous one; it returns false at either end. [position] is the event's index in the list of
+ * [total] events, or -1 when it is no longer in the list.
+ */
 @Composable
-private fun EventDetail(profile: ServerProfile, ui: EventUi, muted: Boolean) {
+private fun EventDetail(
+    profile: ServerProfile,
+    ui: EventUi,
+    muted: Boolean,
+    position: Int,
+    total: Int,
+    onStep: (Int) -> Boolean,
+) {
     val event = ui.event
     val playing = event.hasClip
-    // Any key press re-shows the overlay; it fades after a pause while a clip plays.
+    val hasPrev = position > 0
+    val hasNext = position in 0 until total - 1
+    val currentOnStep by rememberUpdatedState(onStep)
+    val canPrev by rememberUpdatedState(hasPrev)
+    val canNext by rememberUpdatedState(hasNext)
+    // Any key press or touch re-shows the overlay; it fades after a pause while a clip plays.
     var pokes by remember { mutableIntStateOf(0) }
     var overlayVisible by remember { mutableStateOf(true) }
-    LaunchedEffect(pokes, playing) {
+    LaunchedEffect(pokes, playing, ui.id) {
         overlayVisible = true
         if (playing) {
             delay(OVERLAY_HIDE_MS)
@@ -468,51 +578,162 @@ private fun EventDetail(profile: ServerProfile, ui: EventUi, muted: Boolean) {
     }
     val overlayAlpha by animateFloatAsState(if (overlayVisible) 1f else 0f, tween(Motion.EnterMs), label = "overlay")
 
+    // Only one clip decodes at a time: after paging, the still is shown until the user settles.
+    var armedId by remember { mutableStateOf(ui.id) }
+    LaunchedEffect(ui.id) {
+        if (armedId != ui.id) {
+            delay(PLAYER_SETTLE_MS)
+            armedId = ui.id
+        }
+    }
+
+    val scope = rememberCoroutineScope()
+    val offset = remember { Animatable(0f) }
+    var widthPx by remember { mutableFloatStateOf(1f) }
+    // Direction of the last successful step; the new event slides in from that side.
+    var enterFrom by remember { mutableIntStateOf(0) }
+    LaunchedEffect(ui.id) {
+        if (enterFrom != 0) {
+            offset.snapTo(enterFrom * widthPx * SLIDE_FRACTION)
+            enterFrom = 0
+            offset.animateTo(0f, tween(Motion.EnterMs, easing = FastOutSlowInEasing))
+        }
+    }
+    val bumpPx = with(LocalDensity.current) { Space.lg.toPx() }
+    fun step(dir: Int) {
+        pokes++
+        if (currentOnStep(dir)) {
+            enterFrom = dir
+        } else {
+            // At either end: a small nudge toward the missing neighbour, then back.
+            scope.launch {
+                offset.animateTo(-dir * bumpPx, tween(Motion.FocusMs))
+                offset.animateTo(0f, tween(Motion.ExitMs, easing = FastOutSlowInEasing))
+            }
+        }
+    }
+
+    val hostView = LocalView.current
+    val isTv = isTelevision()
     val enter = remember { MutableTransitionState(false).apply { targetState = true } }
     AnimatedVisibility(visibleState = enter, enter = fadeIn(tween(Motion.EnterMs))) {
         Box(
             Modifier
                 .fillMaxSize()
                 .background(Ink)
-                .onPreviewKeyEvent {
+                .onSizeChanged { widthPx = it.width.toFloat().coerceAtLeast(1f) }
+                .onPreviewKeyEvent { e ->
                     pokes++
-                    false
+                    val dir = when (e.key) {
+                        Key.DirectionLeft -> -1
+                        Key.DirectionRight -> 1
+                        else -> 0
+                    }
+                    // LEFT/RIGHT page between events unless the player's own controls have focus.
+                    if (dir == 0 || playerControlsFocused(hostView)) return@onPreviewKeyEvent false
+                    if (e.type == KeyEventType.KeyDown) step(dir)
+                    true
+                }
+                .pointerInput(Unit) {
+                    val threshold = 72.dp.toPx()
+                    val flingVelocity = 600.dp.toPx()
+                    // Leave the bottom strip to the player's seek bar.
+                    val seekBarStrip = 88.dp.toPx()
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        pokes++
+                        if (down.position.y > size.height - seekBarStrip) return@awaitEachGesture
+                        val tracker = VelocityTracker()
+                        tracker.addPosition(down.uptimeMillis, down.position)
+                        var dragging = false
+                        var dx = 0f
+                        while (true) {
+                            val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
+                            if (!change.pressed) {
+                                if (dragging) change.consume()
+                                break
+                            }
+                            tracker.addPosition(change.uptimeMillis, change.position)
+                            val moved = change.position - down.position
+                            if (!dragging) {
+                                if (abs(moved.x) > viewConfiguration.touchSlop && abs(moved.x) > abs(moved.y) * 1.5f) {
+                                    dragging = true
+                                } else if (abs(moved.y) > viewConfiguration.touchSlop) {
+                                    return@awaitEachGesture
+                                }
+                            }
+                            if (dragging) {
+                                // Consuming cancels the touch for the player, so a swipe never toggles its controls.
+                                change.consume()
+                                dx = moved.x
+                                val open = if (dx < 0) canNext else canPrev
+                                val follow = if (open) dx else dx * EDGE_RESISTANCE
+                                scope.launch { offset.snapTo(follow) }
+                            }
+                        }
+                        if (!dragging) return@awaitEachGesture
+                        val v = tracker.calculateVelocity().x
+                        // Swipe left (finger moves left) shows the next event, like turning a page.
+                        val dir = when {
+                            dx < 0 && (dx < -threshold || v < -flingVelocity) -> 1
+                            dx > 0 && (dx > threshold || v > flingVelocity) -> -1
+                            else -> 0
+                        }
+                        pokes++
+                        if (dir != 0 && currentOnStep(dir)) {
+                            enterFrom = dir
+                        } else {
+                            scope.launch { offset.animateTo(0f, tween(Motion.ExitMs, easing = FastOutSlowInEasing)) }
+                        }
+                    }
                 },
         ) {
-            when {
-                playing -> StreamPlayer(
-                    url = remember(profile, ui.id) { api.eventClipUrl(profile, ui.id) },
-                    rtsp = false,
-                    audible = !muted,
-                    networkEpoch = 0,
-                    onState = {},
-                    controls = true,
-                    retry = false,
-                    modifier = Modifier.fillMaxSize(),
-                )
-                event.hasSnapshot -> {
-                    RemoteImage(
-                        remember(profile, ui.id) { api.eventSnapshotUrl(profile, ui.id) },
-                        refreshMs = null,
-                        contentScale = ContentScale.Fit,
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        translationX = offset.value
+                        alpha = 1f - (abs(offset.value) / size.width.coerceAtLeast(1f)).coerceIn(0f, 0.6f)
+                    },
+            ) {
+                when {
+                    playing && armedId == ui.id -> StreamPlayer(
+                        url = remember(profile, ui.id) { api.eventClipUrl(profile, ui.id) },
+                        rtsp = false,
+                        audible = !muted,
+                        networkEpoch = 0,
+                        onState = {},
+                        controls = true,
+                        retry = false,
                         modifier = Modifier.fillMaxSize(),
+                        placeholder = if (event.hasSnapshot) { { EventStill(profile, ui) } } else null,
                     )
-                    Text(
-                        "No recording available for this event.",
-                        color = TextPrimary,
-                        style = MaterialTheme.typography.bodyLarge,
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .padding(bottom = Space.xl)
-                            .clip(RoundedCornerShape(Radius.md))
-                            .background(BadgeBg)
-                            .padding(horizontal = Space.md, vertical = Space.xs),
+                    playing -> if (event.hasSnapshot) EventStill(profile, ui) else LoadingState("Loading clip…")
+                    event.hasSnapshot -> {
+                        EventStill(profile, ui)
+                        Text(
+                            "No recording available for this event.",
+                            color = TextPrimary,
+                            style = MaterialTheme.typography.bodyLarge,
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(bottom = Space.xl)
+                                .clip(RoundedCornerShape(Radius.md))
+                                .background(BadgeBg)
+                                .padding(horizontal = Space.md, vertical = Space.xs),
+                        )
+                    }
+                    else -> EmptyState(
+                        title = "No clip or snapshot available.",
+                        message = "Frigate did not keep media for this event.",
                     )
                 }
-                else -> EmptyState(
-                    title = "No clip or snapshot available.",
-                    message = "Frigate did not keep media for this event.",
-                )
+            }
+
+            // Previous / next affordances at the side edges, shown with the overlay. Tappable on phones.
+            if (position >= 0 && total > 1) {
+                PageArrow("‹", enabled = hasPrev, Modifier.align(Alignment.CenterStart), { overlayAlpha }) { step(-1) }
+                PageArrow("›", enabled = hasNext, Modifier.align(Alignment.CenterEnd), { overlayAlpha }) { step(1) }
             }
 
             Row(
@@ -545,18 +766,78 @@ private fun EventDetail(profile: ServerProfile, ui: EventUi, muted: Boolean) {
                         color = TextSecondary,
                         style = MaterialTheme.typography.bodyLarge.merge(NumericStyle),
                         maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
                 Spacer(Modifier.width(Space.md))
-                Text(
-                    text = "Press BACK to return to the list.",
-                    color = TextSecondary,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(top = Space.xs),
-                )
+                Column(horizontalAlignment = Alignment.End) {
+                    if (position >= 0 && total > 1) {
+                        Text(
+                            "${position + 1} / $total",
+                            color = TextPrimary,
+                            style = MaterialTheme.typography.labelLarge.merge(NumericStyle),
+                            maxLines = 1,
+                            softWrap = false,
+                            modifier = Modifier
+                                .clip(BadgeShape)
+                                .background(BadgeBg)
+                                .padding(horizontal = Space.xs, vertical = Space.xxs),
+                        )
+                        Spacer(Modifier.height(Space.xxs))
+                    }
+                    Text(
+                        text = when {
+                            total <= 1 || position < 0 -> if (isTv) "Press BACK to return to the list." else "Back returns to the list."
+                            isTv -> "◀ ▶ browse events · BACK returns to the list."
+                            else -> "Swipe to browse events."
+                        },
+                        color = TextSecondary,
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 1,
+                    )
+                }
             }
         }
     }
 }
+
+/** The event's full snapshot, letterboxed. Shown for snapshot-only events and while a clip connects. */
+@Composable
+private fun EventStill(profile: ServerProfile, ui: EventUi) {
+    RemoteImage(
+        remember(profile, ui.id) { api.eventSnapshotUrl(profile, ui.id) },
+        refreshMs = null,
+        contentScale = ContentScale.Fit,
+        modifier = Modifier.fillMaxSize(),
+    )
+}
+
+/** Round ‹ › hint at a side edge of the detail view. Not focusable: the D-pad pages with LEFT/RIGHT. */
+@Composable
+private fun PageArrow(glyph: String, enabled: Boolean, modifier: Modifier, alpha: () -> Float, onTap: () -> Unit) {
+    Box(
+        modifier
+            .padding(horizontal = Space.sm)
+            .size(44.dp)
+            .graphicsLayer { this.alpha = alpha() * if (enabled) 0.9f else 0.3f }
+            .clip(CircleShape)
+            .background(BadgeBg)
+            .pointerInput(enabled) {
+                if (enabled) detectTapGestures { if (alpha() > 0.5f) onTap() }
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(glyph, color = TextPrimary, style = MaterialTheme.typography.headlineMedium, maxLines = 1)
+    }
+}
+
+/** True when focus is inside the media3 player's control bar (play/pause, seek bar, ...). */
+private fun playerControlsFocused(host: View): Boolean {
+    val focused = host.rootView.findFocus() ?: return false
+    return generateSequence(focused) { it.parent as? View }.any {
+        it.id == androidx.media3.ui.R.id.exo_controller || it.javaClass.simpleName == "PlayerControlView"
+    }
+}
+
 
 private val TopScrim = Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.8f), Color.Transparent))

@@ -23,6 +23,9 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -254,9 +257,10 @@ fun RecordingsScreen(state: AppState) {
 
         val loaded = data
         val model = loaded?.getOrNull()
+        // fill = false: on tall screens the panel wraps the capped timeline instead of leaving a void.
         Column(
             Modifier
-                .weight(1f)
+                .weight(1f, fill = false)
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(Radius.lg))
                 .background(Panel)
@@ -287,7 +291,12 @@ fun RecordingsScreen(state: AppState) {
                             cursor = cursor,
                             onCursor = moveCursor,
                             onPlay = { playStart = cursor.doubleValue },
-                            modifier = Modifier.fillMaxWidth().weight(1f).heightIn(min = 96.dp),
+                            // Capped so a tall (portrait) screen does not stretch the day into a huge block.
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f, fill = false)
+                                .heightIn(min = 96.dp, max = 320.dp)
+                                .fillMaxHeight(),
                         )
                     }
                     Spacer(Modifier.height(Space.sm))
@@ -323,7 +332,9 @@ private fun DayPicker(today: LocalDate, selected: Int, onSelect: (Int) -> Unit) 
     val labels = remember(today) { (0..DAYS_BACK).map { dayLabel(today, it) } }
     Row(
         horizontalArrangement = Arrangement.spacedBy(Space.xs),
-        modifier = Modifier.padding(horizontal = Space.xxs, vertical = Space.xxs),
+        modifier = Modifier
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = Space.xxs, vertical = Space.xxs),
     ) {
         labels.forEachIndexed { offset, label ->
             Pill(label, selected = offset == selected) { onSelect(offset) }
@@ -345,6 +356,8 @@ private fun Pill(label: String, selected: Boolean, onClick: () -> Unit) {
             label,
             color = if (selected) Accent else TextSecondary,
             style = MaterialTheme.typography.labelLarge,
+            maxLines = 1,
+            softWrap = false,
         )
     }
 }
@@ -404,6 +417,7 @@ private fun Controls(
     onNextEvent: (Double) -> Unit,
     onPlay: () -> Unit,
 ) {
+    val isTv = isTelevision()
     val nextEvent by remember(model) { derivedStateOf { model.nextEventAfter(cursor.doubleValue + 1) } }
     Row(
         Modifier.fillMaxWidth(),
@@ -411,7 +425,11 @@ private fun Controls(
         horizontalArrangement = Arrangement.spacedBy(Space.sm),
     ) {
         Text(
-            if (model.isEmpty) "Choose another day or camera above" else "◀ ▶  move 5 min  ·  hold to skip faster  ·  OK  play",
+            when {
+                model.isEmpty -> "Choose another day or camera above"
+                isTv -> "◀ ▶  move 5 min  ·  hold to skip faster  ·  OK  play"
+                else -> "Tap Play from here to start playback"
+            },
             color = TextSecondary,
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.weight(1f),
@@ -573,6 +591,7 @@ private fun DrawScope.drawTimeline(
 
 @Composable
 private fun PlaybackView(url: String, cameraId: String, start: Double, dayLabel: String, audible: Boolean) {
+    val isTv = isTelevision()
     Column(Modifier.fillMaxSize().padding(horizontal = Space.lg, vertical = Space.md)) {
         // Video sits in a Panel frame; the inner corner radius is the outer radius minus the frame padding.
         Box(
@@ -619,18 +638,20 @@ private fun PlaybackView(url: String, cameraId: String, start: Double, dayLabel:
                 buildAnnotatedString {
                     append("Playing ${displayName(cameraId)} from ")
                     withStyle(NUMERIC_SPAN) { append(formatClock(start)) }
-                    append(". Press BACK to return to the timeline.")
+                    append(if (isTv) ". Press BACK to return to the timeline." else ". Back returns to the timeline.")
                 },
                 color = TextPrimary,
                 style = MaterialTheme.typography.bodyLarge,
                 modifier = Modifier.weight(1f),
             )
-            Spacer(Modifier.width(Space.md))
-            Text(
-                "OK  pause  ·  ◀ ▶  seek",
-                color = TextSecondary,
-                style = MaterialTheme.typography.bodyMedium,
-            )
+            if (isTv) {
+                Spacer(Modifier.width(Space.md))
+                Text(
+                    "OK  pause  ·  ◀ ▶  seek",
+                    color = TextSecondary,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
         }
     }
 }
